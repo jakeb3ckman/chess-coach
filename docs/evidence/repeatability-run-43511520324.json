@@ -1,0 +1,329 @@
+{
+ "platform": "Linux x86_64",
+ "cpu": "Intel(R) Xeon(R) 6975P-C",
+ "workers": 4,
+ "engine": {
+  "threads": 1,
+  "hash_mb": 16,
+  "pass1_nodes": 200000,
+  "pass2_nodes": 2000000,
+  "pass2_multipv": 2,
+  "candidate_min_drop": 7.0,
+  "candidate_min_win_before": 5.0,
+  "pv1_min_drop": 5.0,
+  "pv_max_plies": 10
+ },
+ "games": 30,
+ "identical": 30,
+ "positions_compared": 1836,
+ "deep_checks_compared": 154,
+ "run": {
+  "done": 30,
+  "failed": [],
+  "remaining": 0,
+  "wall_s": 367.7,
+  "engine_s": 1349.2
+ },
+ "rows": [
+  {
+   "id": "chesscom:185779323540",
+   "time_class": "blitz",
+   "identical": true,
+   "p1_positions": 77,
+   "p2_checks": 4,
+   "p1_positions_different": null,
+   "runner_secs": 43.15,
+   "stored_secs": 37.87
+  },
+  {
+   "id": "chesscom:186517553294",
+   "time_class": "bullet",
+   "identical": true,
+   "p1_positions": 58,
+   "p2_checks": 11,
+   "p1_positions_different": null,
+   "runner_secs": 81.92,
+   "stored_secs": 76.19
+  },
+  {
+   "id": "chesscom:185782038052",
+   "time_class": "rapid",
+   "identical": true,
+   "p1_positions": 184,
+   "p2_checks": 6,
+   "p1_positions_different": null,
+   "runner_secs": 62.31,
+   "stored_secs": 51.93
+  },
+  {
+   "id": "lichess:5i0Uc1fI",
+   "time_class": "blitz",
+   "identical": true,
+   "p1_positions": 29,
+   "p2_checks": 3,
+   "p1_positions_different": null,
+   "runner_secs": 27.34,
+   "stored_secs": 24.73
+  },
+  {
+   "id": "lichess:tYkrZpjP",
+   "time_class": "bullet",
+   "identical": true,
+   "p1_positions": 57,
+   "p2_checks": 8,
+   "p1_positions_different": null,
+   "runner_secs": 54.37,
+   "stored_secs": 46.45
+  },
+  {
+   "id": "chesscom:187124619058",
+   "time_class": "blitz",
+   "identical": true,
+   "p1_positions": 10,
+   "p2_checks": 2,
+   "p1_positions_different": null,
+   "runner_secs": 13.38,
+   "stored_secs": 146.11
+  },
+  {
+   "id": "chesscom:185690351302",
+   "time_class": "bullet",
+   "identical": true,
+   "p1_positions": 52,
+   "p2_checks": 2,
+   "p1_positions_different": null,
+   "runner_secs": 28.86,
+   "stored_secs": 24.99
+  },
+  {
+   "id": "chesscom:185667243912",
+   "time_class": "rapid",
+   "identical": true,
+   "p1_positions": 75,
+   "p2_checks": 7,
+   "p1_positions_different": null,
+   "runner_secs": 63.82,
+   "stored_secs": 53.05
+  },
+  {
+   "id": "lichess:0JS9wbxH",
+   "time_class": "blitz",
+   "identical": true,
+   "p1_positions": 30,
+   "p2_checks": 3,
+   "p1_positions_different": null,
+   "runner_secs": 27.12,
+   "stored_secs": 23.24
+  },
+  {
+   "id": "lichess:87mqrr31",
+   "time_class": "bullet",
+   "identical": true,
+   "p1_positions": 22,
+   "p2_checks": 2,
+   "p1_positions_different": null,
+   "runner_secs": 20.21,
+   "stored_secs": 18.2
+  },
+  {
+   "id": "chesscom:186113549366",
+   "time_class": "blitz",
+   "identical": true,
+   "p1_positions": 64,
+   "p2_checks": 8,
+   "p1_positions_different": null,
+   "runner_secs": 64.25,
+   "stored_secs": 53.19
+  },
+  {
+   "id": "chesscom:185690063418",
+   "time_class": "bullet",
+   "identical": true,
+   "p1_positions": 20,
+   "p2_checks": 4,
+   "p1_positions_different": null,
+   "runner_secs": 29.57,
+   "stored_secs": 25.46
+  },
+  {
+   "id": "chesscom:185838710190",
+   "time_class": "rapid",
+   "identical": true,
+   "p1_positions": 46,
+   "p2_checks": 4,
+   "p1_positions_different": null,
+   "runner_secs": 37.41,
+   "stored_secs": 34.03
+  },
+  {
+   "id": "lichess:WKKYMrB1",
+   "time_class": "bullet",
+   "identical": true,
+   "p1_positions": 51,
+   "p2_checks": 5,
+   "p1_positions_different": null,
+   "runner_secs": 40.03,
+   "stored_secs": 34.72
+  },
+  {
+   "id": "chesscom:186819539144",
+   "time_class": "blitz",
+   "identical": true,
+   "p1_positions": 73,
+   "p2_checks": 3,
+   "p1_positions_different": null,
+   "runner_secs": 40.56,
+   "stored_secs": 31.91
+  },
+  {
+   "id": "chesscom:186397394472",
+   "time_class": "bullet",
+   "identical": true,
+   "p1_positions": 47,
+   "p2_checks": 4,
+   "p1_positions_different": null,
+   "runner_secs": 39.23,
+   "stored_secs": 32.75
+  },
+  {
+   "id": "chesscom:185715786788",
+   "time_class": "rapid",
+   "identical": true,
+   "p1_positions": 31,
+   "p2_checks": 6,
+   "p1_positions_different": null,
+   "runner_secs": 42.09,
+   "stored_secs": 39.0
+  },
+  {
+   "id": "lichess:DH5jXH9f",
+   "time_class": "bullet",
+   "identical": true,
+   "p1_positions": 53,
+   "p2_checks": 8,
+   "p1_positions_different": null,
+   "runner_secs": 62.07,
+   "stored_secs": 53.32
+  },
+  {
+   "id": "chesscom:185659514084",
+   "time_class": "blitz",
+   "identical": true,
+   "p1_positions": 51,
+   "p2_checks": 4,
+   "p1_positions_different": null,
+   "runner_secs": 40.54,
+   "stored_secs": 33.59
+  },
+  {
+   "id": "chesscom:186123428712",
+   "time_class": "bullet",
+   "identical": true,
+   "p1_positions": 83,
+   "p2_checks": 5,
+   "p1_positions_different": null,
+   "runner_secs": 50.09,
+   "stored_secs": 42.21
+  },
+  {
+   "id": "chesscom:185716000560",
+   "time_class": "rapid",
+   "identical": true,
+   "p1_positions": 105,
+   "p2_checks": 12,
+   "p1_positions_different": null,
+   "runner_secs": 98.37,
+   "stored_secs": 91.06
+  },
+  {
+   "id": "lichess:eqk1ZcSq",
+   "time_class": "bullet",
+   "identical": true,
+   "p1_positions": 30,
+   "p2_checks": 2,
+   "p1_positions_different": null,
+   "runner_secs": 21.03,
+   "stored_secs": 18.69
+  },
+  {
+   "id": "chesscom:185893616454",
+   "time_class": "blitz",
+   "identical": true,
+   "p1_positions": 66,
+   "p2_checks": 3,
+   "p1_positions_different": null,
+   "runner_secs": 38.48,
+   "stored_secs": 35.04
+  },
+  {
+   "id": "chesscom:185689963932",
+   "time_class": "bullet",
+   "identical": true,
+   "p1_positions": 53,
+   "p2_checks": 2,
+   "p1_positions_different": null,
+   "runner_secs": 28.61,
+   "stored_secs": 23.56
+  },
+  {
+   "id": "chesscom:186373907258",
+   "time_class": "rapid",
+   "identical": true,
+   "p1_positions": 58,
+   "p2_checks": 7,
+   "p1_positions_different": null,
+   "runner_secs": 56.79,
+   "stored_secs": 48.14
+  },
+  {
+   "id": "lichess:wmAGWMTj",
+   "time_class": "bullet",
+   "identical": true,
+   "p1_positions": 42,
+   "p2_checks": 2,
+   "p1_positions_different": null,
+   "runner_secs": 24.44,
+   "stored_secs": 21.53
+  },
+  {
+   "id": "chesscom:185555312396",
+   "time_class": "blitz",
+   "identical": true,
+   "p1_positions": 110,
+   "p2_checks": 9,
+   "p1_positions_different": null,
+   "runner_secs": 50.26,
+   "stored_secs": 62.5
+  },
+  {
+   "id": "chesscom:185611802832",
+   "time_class": "bullet",
+   "identical": true,
+   "p1_positions": 54,
+   "p2_checks": 4,
+   "p1_positions_different": null,
+   "runner_secs": 31.89,
+   "stored_secs": 37.64
+  },
+  {
+   "id": "chesscom:185816446320",
+   "time_class": "rapid",
+   "identical": true,
+   "p1_positions": 139,
+   "p2_checks": 9,
+   "p1_positions_different": null,
+   "runner_secs": 79.39,
+   "stored_secs": 68.66
+  },
+  {
+   "id": "lichess:nxQwm0wd",
+   "time_class": "bullet",
+   "identical": true,
+   "p1_positions": 66,
+   "p2_checks": 5,
+   "p1_positions_different": null,
+   "runner_secs": 51.62,
+   "stored_secs": 461.28
+  }
+ ]
+}
