@@ -1,0 +1,87 @@
+{
+ "chesscom": {
+  "archives": {
+   "2022/03": {
+    "etag": "W/\"6aec6002f0a146c709c8045f9fed4406\"",
+    "last_modified": "Friday, 13-Nov-2026 19:57:42 GMT+0000",
+    "fetched_at": "2026-11-13T20:27:32Z",
+    "complete": true
+   },
+   "2022/11": {
+    "etag": "W/\"b1e553bde1d3080f9916caa0a8366791\"",
+    "last_modified": "Friday, 13-Nov-2026 19:57:42 GMT+0000",
+    "fetched_at": "2026-11-13T20:27:32Z",
+    "complete": true
+   },
+   "2025/02": {
+    "etag": "W/\"13fdcdc41bde5b3a5a3b549e397aec2b\"",
+    "last_modified": "Friday, 13-Nov-2026 19:57:42 GMT+0000",
+    "fetched_at": "2026-11-13T20:27:32Z",
+    "complete": true
+   },
+   "2025/03": {
+    "etag": "W/\"296ed14c75a12bf4749bdab777219a0c\"",
+    "last_modified": "Friday, 13-Nov-2026 19:57:43 GMT+0000",
+    "fetched_at": "2026-11-13T20:27:33Z",
+    "complete": true
+   },
+   "2026/03": {
+    "etag": "W/\"da96a2719a8e68b0bb34b03d6da7a61c\"",
+    "last_modified": "Friday, 13-Nov-2026 19:57:43 GMT+0000",
+    "fetched_at": "2026-11-13T20:27:33Z",
+    "complete": true
+   },
+   "2026/04": {
+    "etag": "W/\"284afbccd23532e88d5b08208ce14d7f\"",
+    "last_modified": "Friday, 13-Nov-2026 19:57:44 GMT+0000",
+    "fetched_at": "2026-11-13T20:27:33Z",
+    "complete": true
+   },
+   "2026/05": {
+    "etag": "W/\"be4bc21f4accb2712c83e7f0afb74779\"",
+    "last_modified": "Friday, 13-Nov-2026 19:57:44 GMT+0000",
+    "fetched_at": "2026-11-13T20:27:35Z",
+    "complete": true
+   },
+   "2026/06": {
+    "etag": "W/\"8c7915ffc0c9e316cb705b7dc98ead32\"",
+    "last_modified": "Friday, 13-Nov-2026 19:57:45 GMT+0000",
+    "fetched_at": "2026-11-13T20:27:35Z",
+    "complete": true
+   },
+   "2026/07": {
+    "etag": "W/\"bd2c05d72bc2fee1e2f8f1d1524eabf0\"",
+    "last_modified": "Friday, 13-Nov-2026 19:57:45 GMT+0000",
+    "fetched_at": "2026-11-13T20:27:36Z",
+    "complete": true
+   },
+   "2026/08": {
+    "etag": "W/\"16ac0585bdc9076b85822c3807889f0d\"",
+    "last_modified": "Friday, 13-Nov-2026 19:57:46 GMT+0000",
+    "fetched_at": "2026-11-13T20:27:37Z",
+    "complete": true
+   },
+   "2026/09": {
+    "etag": "W/\"f24ca6d3448d2793d9cd6262a97fb345\"",
+    "last_modified": "Friday, 13-Nov-2026 19:57:48 GMT+0000",
+    "fetched_at": "2026-11-13T20:27:39Z",
+    "complete": true
+   },
+   "2026/10": {
+    "etag": "W/\"ba1c52e9a9fa4f02aa0f41e1c3e005ac\"",
+    "last_modified": "Friday, 13-Nov-2026 19:57:49 GMT+0000",
+    "fetched_at": "2026-11-13T20:27:42Z",
+    "complete": true
+   },
+   "2026/11": {
+    "etag": "W/\"9a7867d0cee8fe343e72f940dce053b8\"",
+    "last_modified": "Friday, 13-Nov-2026 14:10:20 GMT+0000",
+    "fetched_at": "2026-11-13T20:28:02Z",
+    "complete": false
+   }
+  }
+ },
+ "lichess": {
+  "max_created_at": 1794402773750
+ }
+}
