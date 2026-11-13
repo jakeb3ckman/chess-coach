@@ -1,0 +1,1 @@
+{"format":1,"engine":{"name":"Stockfish 19","threads":1,"hash_mb":16,"pass1_nodes":200000,"pass2_nodes":2000000,"pass2_multipv":2,"candidate_min_drop":7.0,"candidate_min_win_before":5.0},"p1":[[30,"e2e4"],[37,"c7c5"],[61,"d2d4"],[-57,"d7d5"],[-41,"g4d1"],[-909,"c8g4"],[-859,"d2d4"]],"pv1":{},"p2":{},"secs":3.41}
