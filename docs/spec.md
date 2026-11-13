@@ -115,6 +115,7 @@ New cards are introduced in this order: **number of occurrences** (same position
    - The four jobs write disjoint sets of files, so `git pull --rebase` before each push never conflicts. A push race is retried.
    - Each job stops starting new batches after **5 h**, well inside the 6-hour limit.
    - A killed job loses at most its current, uncommitted batch. The next run skips every game whose analysis file already exists.
+   - A game whose analysis throws an error gets a marker in `data/analysis-failed/` and is not retried automatically. This stops the workflow from looping on one bad game. Delete the marker to retry.
 3. **Build job** (one job): rebuilds mistakes, cards and app data, then publishes the site. It is the only job that writes those files.
 4. **Next run:** if games are still waiting, the workflow starts itself again. This uses `workflow_dispatch`, one of the few triggers GitHub allows from inside a workflow. A concurrency group makes sure only one run happens at a time. The same workflow also runs nightly.
 

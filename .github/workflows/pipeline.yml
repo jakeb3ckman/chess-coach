@@ -1,0 +1,97 @@
+# Nightly: import new games, analyze them with Stockfish in 4 parallel shards,
+# then rebuild cards. Resumable: each shard commits every 20 games and stops
+# starting new games after 5 hours; if games are still waiting, the workflow
+# starts itself again. Only one run at a time (concurrency group).
+name: pipeline
+
+on:
+  schedule:
+    - cron: "17 9 * * *"   # 09:17 UTC = 04:17 New York (winter)
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # commit game + analysis files
+  actions: write    # re-dispatch itself while a backlog remains
+
+concurrency:
+  group: pipeline
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.11.5"
+
+jobs:
+  import:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv sync --frozen
+      - run: uv run python -m coach import
+      - name: Commit new games
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/games data/state
+          if ! git diff --cached --quiet; then
+            git commit -q -m "import: new games"
+            git pull --rebase -q && git push -q
+          fi
+
+  analyze:
+    needs: import
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.ref_name }}   # latest commit, including the games just imported
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .engine
+          key: stockfish-${{ runner.os }}-${{ hashFiles('tools/stockfish.lock') }}
+      - run: tools/install_stockfish.sh   # verifies the pinned SHA-256
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv sync --frozen
+      - run: uv run python -m coach versions
+      - name: Analyze shard ${{ matrix.shard }} of 4
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          uv run python -m coach analyze --shard ${{ matrix.shard }}/4 --workers "$(nproc)" --commit
+
+  build:
+    needs: analyze
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv sync --frozen
+      - run: uv run python -m coach build
+      # Phase 2 adds: build the app's cards.json/openings.json into site/ and deploy to Pages.
+      - name: Start another run if games are still waiting
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          left=$(uv run python -m coach pending)
+          echo "games still waiting: $left"
+          if [ "$left" -gt 0 ]; then
+            gh workflow run pipeline.yml --ref "${{ github.ref_name }}"
+          fi

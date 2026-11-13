@@ -1,0 +1,5 @@
+# Pinned Stockfish release. install_stockfish.sh verifies the SHA-256 before use.
+version=sf_19
+macos=stockfish-macos-universal.tar.gz a1f0e3bcc5a6927a11fe6fc8e54a779754645f3c2bae2cf13420fd1957adaa77
+linux-x86_64=stockfish-linux-x86-64-universal.tar.gz 9defc0d4e55d49c65a6d042f3e571a39fcea499ade6dbe741b53b8c65e03611f
+linux-arm64=stockfish-linux-arm64-universal.tar.gz fe26cfd1d9db4c8af3d21e24d9ff34cacb31c1f940085a7583da11796f2bac01

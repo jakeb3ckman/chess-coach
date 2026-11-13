@@ -1,0 +1,41 @@
+# Personal Chess Coach settings.
+# Card rules can be changed at any time: cards are rebuilt from stored analysis.
+# Engine settings only apply to games analyzed after the change (finished games are never re-analyzed).
+
+[accounts]
+chesscom = "jakeb3ckman"
+lichess = "jbeck1026"
+
+[import]
+time_classes = ["bullet", "blitz", "rapid"]   # standard chess only; daily/correspondence/variants are skipped
+user_agent = "chess-coach-personal/1.0 (username: jakeb3ckman)"
+
+[engine]
+threads = 1                 # 1 thread + fixed nodes = repeatable results on any machine
+hash_mb = 16
+pass1_nodes = 200000        # every position
+pass2_nodes = 2000000       # candidate moves only
+pass2_multipv = 2
+candidate_min_drop = 7.0    # Win% points lost in pass 1 to get a deep check
+candidate_min_win_before = 5.0  # skip deep checks when already below this Win%
+pv1_min_drop = 5.0          # keep the pass-1 engine line for my moves that lost at least this much
+pv_max_plies = 10
+
+[labels]                    # drop in Win% points (0-100 scale), same as Lichess
+inaccuracy = 5.0
+mistake = 10.0
+blunder = 15.0
+
+[cards]
+min_label = "mistake"       # mistake or blunder
+min_second_best_gap = 15.0  # best move must beat the 2nd-best by this many Win% points
+decided_low = 10.0          # below this Win% before the move = already lost
+decided_high = 90.0         # above this = already won ...
+thrown_win_below = 50.0     # ... unless the move dropped me below this (thrown-away win stays eligible)
+time_trouble_max_s = 15.0   # severe time trouble = clock before the move < min(max_s, frac * base time)
+time_trouble_frac = 0.10
+new_per_day = 10
+
+[analysis_jobs]
+batch_games = 20            # commit after this many finished games
+budget_minutes = 300        # stop starting new games after this long (GitHub's job limit is 360)
