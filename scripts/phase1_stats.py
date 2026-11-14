@@ -10,6 +10,7 @@ import collections
 import hashlib
 import json
 import statistics
+import subprocess
 import sys
 from pathlib import Path
 
@@ -25,7 +26,7 @@ LABELS = ["inaccuracy", "mistake", "blunder"]
 
 
 def table(header, rows):
-    out = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
+    out = ["", "| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
     out += ["| " + " | ".join(str(c) for c in r) + " |" for r in rows]
     return "\n".join(out)
 
@@ -88,14 +89,29 @@ def main():
     ids_file = Path("tmp/first_run_ids.txt")
     if ids_file.exists():
         slow_ids = set(ids_file.read_text().split())
-    secs = [a["secs"] for g in games if (a := analyses[g["id"]]) and g["site_id"] not in slow_ids]
-    p(f"Speed stats below exclude {len(slow_ids)} games timed by the early, slower runner.")
+    # Which machine produced each analysis file: commits by the GitHub Actions bot came
+    # from a runner, everything else from the Mac.
+    bot_files = set(subprocess.run(
+        ["git", "log", "--author=github-actions", "--diff-filter=A", "--name-only", "--format=", "--", "data/analysis"],
+        capture_output=True, text=True, check=True).stdout.split())
+    by_machine: dict[str, list[float]] = {"GitHub runner": [], "Mac": []}
+    for g in games:
+        a = analyses[g["id"]]
+        if not a or g["site_id"] in slow_ids:
+            continue
+        rel = str(store.analysis_path(g).relative_to(store.data.parent))
+        by_machine["GitHub runner" if rel in bot_files else "Mac"].append(a["secs"])
+    p(f"Speed stats below exclude {len(slow_ids)} games timed by the first, slowed-down Mac run.")
     positions = sum(len(a["p1"]) for a in done)
     p2 = sum(len(a["p2"]) for a in done)
     p(f"Analyzed: {len(done)}/{len(games)} games; failed: {len(failed)}.")
     p(f"Positions in pass 1: {positions:,}; pass-2 deep checks: {p2:,} ({p2 / max(1, len(done)):.1f} per game).")
-    p(f"Engine time per game (one thread, on this Mac while 9 ran in parallel): mean {statistics.mean(secs):.1f} s, "
-      f"median {statistics.median(secs):.1f} s; total {sum(secs) / 3600:.1f} thread-hours.")
+    p("\n| machine | games | engine s per game, mean | median | thread-hours |\n|---|---|---|---|---|")
+    for name, secs in by_machine.items():
+        if secs:
+            p(f"| {name} | {len(secs)} | {statistics.mean(secs):.1f} | {statistics.median(secs):.1f} | {sum(secs) / 3600:.1f} |")
+    p("\n(Mac: Apple M3 Pro, 9-10 engines in parallel. Runner: 4 engines in parallel, one per vCPU. "
+      "Each engine uses one thread.)\n")
     engines = collections.Counter(json.dumps(a["engine"], sort_keys=True) for a in done)
     p(f"Engine settings used (distinct): {len(engines)} -> {list(engines)[0] if engines else '-'}")
 

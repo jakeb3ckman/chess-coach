@@ -146,8 +146,6 @@ Devices never write the same file, so there are no merge conflicts. If both revi
 | **1.1** | Both importers, normalization, de-dup, incremental fetch, tests | Game counts per site and time control. Run it twice: the second run fetches only new games |
 | **1.2** | Stockfish passes, classifier, card rules, tests | Mistake counts per label, cards vs excluded per rule |
 | **1.3** | Full backfill + `docs/phase-1-report.md` + nightly workflow | The report with 15 sample puzzles linked to the real games. **STOP 2** |
-
-The Phase 1 backfill runs once on this Mac while I build, because the GitHub repo doesn't exist yet. It uses the same code, Stockfish version and settings as the cloud job. Results don't depend on the machine, and Phase 1 checks that. All scheduled work after Phase 1 runs on GitHub.
 | 2.1 | Static app: one card on a board, play a move, right/wrong | Open the site on Mac and iPhone |
 | 2.2 | FSRS daily queue (local only) | Daily review count; misses come back sooner |
 | 2.3 | Sync through the progress repo | Review on phone, see it updated on Mac |
@@ -155,6 +153,8 @@ The Phase 1 backfill runs once on this Mac while I build, because the GitHub rep
 | 3.1 | Repertoire: my openings as White/Black, opponents' replies, results by line | Opening page in the app |
 | 3.2 | Opening leaks: positions where I most often miss the best move, added to the deck as `opening` cards | Leak list; opening cards appear in reviews |
 | 4 | Coaching notes (later) | Possible because every engine line and every review event is kept as raw data |
+
+The Phase 1 backfill started on this Mac (765 games) and was finished by the GitHub workflow (2,462 games). Both use the same code, Stockfish build and settings, and a 30-game re-check on a GitHub runner matched the Mac output exactly (see `docs/phase-1-report.md`). All scheduled work after Phase 1 runs on GitHub.
 
 **What you set up yourself (only GitHub):**
 1. Sign in to or create a free GitHub account (before 1.3).
