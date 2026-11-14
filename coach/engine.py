@@ -58,7 +58,10 @@ def _pv(info, max_plies) -> str:
     return " ".join(m.uci() for m in info.get("pv", [])[:max_plies])
 
 
-def analyze_game(game: dict, settings: dict, eng: chess.engine.SimpleEngine) -> dict:
+def analyze_game(game: dict, settings: dict, eng: chess.engine.SimpleEngine, deep_all: bool = False) -> dict:
+    """deep_all=True runs pass 2 on every one of my moves, not just pass-1 candidates.
+    Only used by scripts/screen_miss_check.py to measure what the pass-1 screen misses;
+    the pipeline never sets it."""
     e = settings["engine"]
     t0 = time.monotonic()
     moves = [chess.Move.from_uci(u) for u in game["moves"].split()]
@@ -93,7 +96,7 @@ def analyze_game(game: dict, settings: dict, eng: chess.engine.SimpleEngine) -> 
         drop = 0.0 if moves[i].uci() == p1[i][1] else before - after
         if drop >= e["pv1_min_drop"]:
             pv1[str(i)] = pv_cache.get(i, "")
-        if drop >= e["candidate_min_drop"] and before >= e["candidate_min_win_before"]:
+        if deep_all or (drop >= e["candidate_min_drop"] and before >= e["candidate_min_win_before"]):
             infos = _analyse(eng, boards[i], e["pass2_nodes"], multipv=e["pass2_multipv"])
             lines = [[encode_score(inf["score"]), inf.get("depth"), _pv(inf, e["pv_max_plies"])]
                      for inf in infos if inf.get("pv")]
@@ -105,7 +108,7 @@ def analyze_game(game: dict, settings: dict, eng: chess.engine.SimpleEngine) -> 
                 after_s, after_d = encode_score(ai["score"]), ai.get("depth")
             p2[str(i)] = {"lines": lines, "after": after_s, "after_d": after_d}
 
-    return {
+    out = {
         "format": ANALYSIS_FORMAT,
         "engine": {
             "name": eng.id.get("name"),
@@ -122,3 +125,6 @@ def analyze_game(game: dict, settings: dict, eng: chess.engine.SimpleEngine) -> 
         "p2": p2,
         "secs": round(time.monotonic() - t0, 2),
     }
+    if deep_all:
+        out["deep_all"] = True
+    return out

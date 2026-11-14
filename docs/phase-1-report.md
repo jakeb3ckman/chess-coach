@@ -411,7 +411,7 @@ Of these, 4282 turned a position where I was at least even into one where I was 
 **Failed:** nothing. All 3,227 games were imported and analyzed, and all 44 tests pass.
 
 **Skipped by design:**
-- **Daily and correspondence games:** 158 Chess.com daily games, plus 1 Lichess correspondence game against the computer.
+- **Daily, correspondence and computer games:** 158 Chess.com daily games; on Lichess, 293 casual games against the computer (292 correspondence games the API request never asks for, plus 1 rapid game that was downloaded and then skipped). *Corrected 2026-11-14: this line first called the skipped rapid game a correspondence game; see `docs/phase-2-notes.md`.*
   - The brief asks for bullet, blitz and rapid only, and human opponents.
 - **Games that can't be played back normally:** variants and custom starting positions are rejected by the importer.
   - None turned up in the real data, but tests cover them.

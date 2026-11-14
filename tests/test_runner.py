@@ -111,3 +111,20 @@ def test_failed_game_is_recorded_not_retried(tmp_path, chesscom_games, fast_engi
     assert [f["id"] for f in r["failed"]] == ["chesscom:bad"]
     assert store.has_failure(bad) and r["remaining"] == 0
     assert run_analysis(store, fast_engine_settings, workers=2, log=lambda *_: None)["done"] == 0
+
+
+def test_deep_all_checks_every_move_and_matches_pipeline(fast_engine_settings):
+    """Used only by scripts/screen_miss_check.py: every one of my moves gets a deep
+    check, and the moves the pipeline deep-checks come out identical."""
+    game, _ = engine_fixture("186778591044")
+    eng = open_engine(fast_engine_settings)
+    try:
+        normal = analyze_game(game, fast_engine_settings, eng)
+        full = analyze_game(game, fast_engine_settings, eng, deep_all=True)
+    finally:
+        eng.quit()
+    parity = 0 if game["my_color"] == "white" else 1
+    my_plies = {str(i) for i in range(len(game["moves"].split())) if i % 2 == parity}
+    assert set(full["p2"]) == my_plies
+    assert all(full["p2"][k] == v for k, v in normal["p2"].items())
+    assert full["p1"] == normal["p1"] and full.get("deep_all") is True and "deep_all" not in normal

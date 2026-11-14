@@ -16,7 +16,7 @@ Status: approved 2026-11-13 with the changes in section 8.
 | Site | Bullet | Blitz | Rapid | Total | Notes |
 |---|---|---|---|---|---|
 | Chess.com `jakeb3ckman` | 1,267 | 855 | 850 | **2,972** | All rated, all have per-move clocks. 158 daily games excluded |
-| Lichess `jbeck1026` | 64 | 127 | 64 | **255** | All have clocks. 292 correspondence + 1 vs-computer game excluded |
+| Lichess `jbeck1026` | 64 | 127 | 64 | **255** | All have clocks. 293 games against the computer excluded: 292 correspondence (never downloaded, the API request asks only for bullet/blitz/rapid) + 1 casual rapid (downloaded, then skipped as a computer game) |
 | **Both** | 1,331 | 982 | 914 | **3,227** | ~174,000 half-moves; average game 54 half-moves |
 
 Timing matters: about 3,200 of the 3,227 games (99%) were played in 2026. October alone had 847 Chess.com games.
