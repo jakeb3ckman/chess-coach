@@ -75,7 +75,7 @@ Scores are raw engine output (`cp` or `mate`, White's view).
 
 **Card** (derived): `card_id` (hash of normalized position + solution move), `fen`, `solution_uci`, `engine_line`, `deck` (`tactics` | `opening`), `occurrences[]` (mistake refs), `created_at`.
 
-**Review event** (progress repo, append-only, one file per device per day, e.g. `log/2026-11-13-iphone.ndjson`): `card_id`, `ts`, `device`, `move_played`, `correct`, `rating` (FSRS Again/Hard/Good/Easy), `ms_to_answer`. Card schedule = replay all events through `ts-fsrs` in time order.
+**Review event** (saved on the device first; from 2.3 also in the progress repo, append-only, one file per device per month, e.g. `log/iphone-3f9a/2026-11.ndjson`): `id` (random, so a re-sent event is never counted twice), `v` (format version), `card_id`, `ts`, `device`, `move_played`, `correct`, `rating` (FSRS Again/Hard/Good/Easy), `ms_to_answer`. A card's schedule = that card's events replayed through `ts-fsrs` in time order (FSRS-7, desired retention 0.90, learning steps 1 min and 10 min, relearning step 10 min, no fuzz, so every device computes exactly the same schedule from the same events).
 
 ## 4. Classification and puzzle rules
 
@@ -131,13 +131,39 @@ Ongoing at your current pace (~850 games/month) is roughly a quarter of that per
 
 **Cap the first import?** No. A date cap saves almost nothing because 99% of the games are from 2026. Instead the backlog runs **newest first**, so the most recent games become cards first.
 
-## 6. Sync between iPhone and Mac
+## 6. The app, and sync between iPhone and Mac
+
+### 6.1 Trainer (milestones 2.1 and 2.2, local only)
+
+- **The board is the whole screen.** On a phone the board is the full width; a thin bar above it shows "due / new left today", and a short panel below shows the prompt and, after an answer, the result. No page scrolling while solving.
+- **Moving with a thumb:** tap a piece, then tap the target square (legal targets are marked), or drag. Touches never scroll the page. Promotion shows a four-piece picker.
+- **Each card:** the position before my move, my side at the bottom, the opponent's previous move highlighted. "Find the best move."
+- **Right move:** graded Good. The engine line is shown, plus an optional **Easy** button.
+- **Wrong move:** graded Again. The board shows the engine's best move (green arrow) and the move I tried (red arrow). The full engine line can be stepped through move by move. It also shows what I played in the game and how much it lost, and links to the original game (Lichess links open at the move; Chess.com links open the game) plus a Lichess analysis board at that position.
+- **Daily queue:** first every card that is due (learning cards come back within the same session), then new cards in the approved order, at most **10 new cards per day**. The day rolls over at **4:00 a.m. local time**, so a late-night session counts as the same day.
+- **Data the app downloads:** one file, `data/cards.json`, holding only what a card needs (position, solution, engine line, previous move, occurrences with game links). Everything else in `data/` is never published.
+- **Storage:** reviews are saved in the app's own on-device database (IndexedDB) the moment they happen. The app asks iOS for persistent storage. Every review event is kept in an "outbox" from day one, so the reviews done before sync exists are uploaded when 2.3 arrives; nothing done in 2.2 is thrown away.
+- **Use the home-screen app from the first day.** On iPhone, the home-screen app has storage separate from Safari, and Safari may delete a website's data after 7 days without a visit. Reviews done in Safari would not show up in the home-screen app.
+
+### 6.2 Sync (milestone 2.3, designed now, built after the stop)
 
 1. Each review is saved on the device first (works offline).
-2. Every ~10 reviews, when the app goes to the background, and on open, the device appends its own events to its own daily file in the progress repo.
-3. On open, each device reads the other device's new files and replays all events.
+2. Every ~10 reviews, when the app goes to the background, and on open, the device appends its outbox events to its own monthly file in the progress repo, then marks them sent. Each event has a unique `id`, so a retry after a half-finished upload never counts a review twice.
+3. On open, the device fetches the progress repo's file list in **one request** (the Git tree API returns every file with a content hash). It downloads only files whose hash changed since last time, usually one or two.
+4. New events from the other device are merged in, and only the cards they touch are replayed.
 
-Devices never write the same file, so there are no merge conflicts. If both review the same card offline, both answers count, in time order. GitHub is the source of truth, so losing the phone's local storage loses nothing.
+Devices never write the same file, so there are no merge conflicts. If both review the same card offline, both answers count, in time order. GitHub is the source of truth, so losing the phone's local storage loses nothing once events are synced.
+
+**Expired or revoked token:** GitHub answers 401 (expired, revoked, or mistyped) or 403/404 (token lacks access to the repo). The app then stops trying, keeps training normally, and shows a banner: "Sync stopped: GitHub refused the token (expired or revoked). N reviews are saved on this device and will upload when you enter a new token." Tapping it opens the token screen. Outbox events are removed only after GitHub confirms the write, so nothing is lost however long sync is broken. Network errors (offline) are not token errors: they show a quiet "offline, N waiting" and retry later.
+
+**Entering the token:** inside the app's own Settings screen, typed or pasted while running as the installed home-screen app. On iPhone that app does not share storage with Safari, so a token entered in Safari would not reach it. The token is never put in a URL (URLs end up in history and logs). Settings shows which repo the token reaches and when sync last succeeded, and has a "Remove token" button. Each device (iPhone, Mac) gets its own token, so revoking one doesn't stop the other.
+
+**Opening stays fast as reviews pile up over a year:**
+- The app never replays all events on open. It keeps each card's current schedule in the on-device database and reads that directly. Opening costs one read of about 2,500 small records, and that number doesn't grow with reviews.
+- Replays happen only for cards that received another device's events, and a single card has at most a few dozen events in a year.
+- Remote files are monthly (about 24 per year across two devices), and opening fetches one file list plus only the changed files. Uploading rewrites only the current month's file for this device, which stays under about 100 KB.
+- Sync runs in the background after the first card is on screen. It never blocks the board.
+- Measured target for 2.3: first card on screen in under 1 second on the iPhone with a simulated year of reviews (about 4,000 events), tested before 2.3 is called done.
 
 ## 7. Milestones
 
@@ -147,7 +173,7 @@ Devices never write the same file, so there are no merge conflicts. If both revi
 | **1.2** | Stockfish passes, classifier, card rules, tests | Mistake counts per label, cards vs excluded per rule |
 | **1.3** | Full backfill + `docs/phase-1-report.md` + nightly workflow | The report with 15 sample puzzles linked to the real games. **STOP 2** |
 | 2.1 | Static app: one card on a board, play a move, right/wrong | Open the site on Mac and iPhone |
-| 2.2 | FSRS daily queue (local only) | Daily review count; misses come back sooner |
+| 2.2 | FSRS daily queue (local only) | Daily review count; misses come back sooner. **STOP: you use it on your iPhone for a few days before sync is built** |
 | 2.3 | Sync through the progress repo | Review on phone, see it updated on Mac |
 | 2.4 | Hands-off nightly run | Play a game tonight; its mistakes are cards tomorrow |
 | 3.1 | Repertoire: my openings as White/Black, opponents' replies, results by line | Opening page in the app |
@@ -176,6 +202,17 @@ The Phase 1 backfill started on this Mac (765 games) and was finished by the Git
    - Compact per-game files, and the app downloads only card and opening data.
    - Pinned versions.
    - noindex on every page.
+
+### Phase 2 decisions (approved 2026-11-14)
+
+1. Stop after milestone 2.2 (local-only trainer with daily queue) for a few days of real use before sync.
+2. Before app code: deep-check every move in a 30-game sample on GitHub and report what the pass-1 screen misses (`scripts/screen_miss_check.py`, workflow `screen-check`).
+3. Lichess exclusions reconciled: 293 games against the computer (section 1 table).
+4. License: GPL-3.0 (`LICENSE`).
+5. Card rules unchanged. No "avoid the blunder" card type yet. Its data stays available: every mistake at every label, with its exclusion reasons, is rebuilt into `data/derived/mistakes.jsonl` on every run from the stored analysis, so that card type can be added later without re-analysis.
+6. noindex on every page from the first deploy.
+7. Sync designed now (section 6.2): clear message on an expired or revoked token with reviews kept queued, token entered inside the installed app, and opening time that doesn't grow with reviews.
+8. On the phone the board is the whole experience; wrong answers show the engine line and a link to the original game (section 6.1).
 
 ## 9. Risks and unknowns
 

@@ -85,7 +85,6 @@ jobs:
           version: ${{ env.UV_VERSION }}
       - run: uv sync --frozen
       - run: uv run python -m coach build
-      # Phase 2 adds: build the app's cards.json/openings.json into site/ and deploy to Pages.
       - name: Start another run if games are still waiting
         env:
           GH_TOKEN: ${{ github.token }}
@@ -95,3 +94,12 @@ jobs:
           if [ "$left" -gt 0 ]; then
             gh workflow run pipeline.yml --ref "${{ github.ref_name }}"
           fi
+
+  site:
+    needs: build
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/site.yml

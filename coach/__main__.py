@@ -49,7 +49,8 @@ def main(argv=None):
     a.add_argument("--limit", type=int)
     a.add_argument("--commit", action="store_true", help="git commit + push after every batch")
     a.add_argument("--no-push", action="store_true")
-    sub.add_parser("build", help="derive mistakes and cards")
+    b = sub.add_parser("build", help="derive mistakes and cards")
+    b.add_argument("--app-out", help="also write the app's card file here")
     sub.add_parser("pending", help="print how many games still need analysis")
     sub.add_parser("versions", help="print installed versions")
     args = p.parse_args(argv)
@@ -70,7 +71,7 @@ def main(argv=None):
         if res["failed"]:
             sys.exit(1)
     elif args.cmd == "build":
-        print(json.dumps(build_all(store, settings), indent=1))
+        print(json.dumps(build_all(store, settings, app_out=args.app_out), indent=1))
     elif args.cmd == "pending":
         print(len(pending_games(store)))
     elif args.cmd == "versions":

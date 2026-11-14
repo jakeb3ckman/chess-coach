@@ -1,0 +1,25 @@
+{
+  "name": "chess-coach-app",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --serve",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@lichess-org/chessground": "10.5.0",
+    "chess.js": "1.4.0",
+    "ts-fsrs": "6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "25.9.9",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  }
+}

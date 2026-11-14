@@ -8,6 +8,8 @@ from __future__ import annotations
 import hashlib
 import json
 
+from pathlib import Path
+
 import chess
 
 from .classify import card_exclusions, label, win_pct
@@ -63,6 +65,7 @@ def derive_mistakes(game: dict, analysis: dict, settings: dict) -> list[dict]:
                     "fen_before": board.fen(),
                     "position_key": board.epd(),
                     "my_move": mv,
+                    "prev_move": moves[i - 1] if i > 0 else None,
                     "my_move_san": board.san(chess.Move.from_uci(mv)),
                     "best_move": best_move,
                     "best_line": best_line,
@@ -100,6 +103,7 @@ def build_cards(mistakes: list[dict]) -> list[dict]:
             "solution_uci": latest["best_move"],
             "engine_line": latest["best_line"],
             "my_color": latest["my_color"],
+            "prev_move": latest["prev_move"],
             "occurrences": [{"game_id": m["game_id"], "url": m["url"], "ply": m["ply"],
                              "my_move": m["my_move"], "drop": m["drop"], "label": m["label"],
                              "time_class": m["time_class"], "ended_at": m["ended_at"]} for m in occ],
@@ -116,7 +120,38 @@ def order_new_cards(cards: list[dict]) -> list[dict]:
     return sorted(cards, key=lambda c: (c["n_occurrences"], c["latest_at"], c["max_drop"]), reverse=True)
 
 
-def build_all(store: Store, settings: dict) -> dict:
+def game_link(occ: dict, my_color: str) -> str:
+    """Link to the original game. Lichess can open at the move (the anchor is the
+    number of half-moves played, so #ply shows the position before my move)."""
+    if occ["url"].startswith("https://lichess.org/"):
+        return f"{occ['url']}/{my_color}#{occ['ply']}"
+    return occ["url"]
+
+
+APP_CARDS_FORMAT = 1
+
+
+def app_cards(cards: list[dict]) -> dict:
+    """The only card file the app downloads: just what a card needs, in the
+    approved new-card order (list order = introduction order)."""
+    return {
+        "format": APP_CARDS_FORMAT,
+        "cards": [{
+            "id": c["card_id"],
+            "deck": c["deck"],
+            "fen": c["fen"],
+            "solution": c["solution_uci"],
+            "line": c["engine_line"],
+            "color": c["my_color"],
+            "prev": c["prev_move"],
+            "occ": [{"link": game_link(o, c["my_color"]), "site": o["game_id"].split(":")[0],
+                     "move": o["my_move"], "drop": o["drop"], "label": o["label"],
+                     "tc": o["time_class"], "at": o["ended_at"][:10]} for o in c["occurrences"]],
+        } for c in cards],
+    }
+
+
+def build_all(store: Store, settings: dict, app_out=None) -> dict:
     mistakes, n_games, n_analyzed = [], 0, 0
     for g in store.iter_games():
         n_games += 1
@@ -131,4 +166,6 @@ def build_all(store: Store, settings: dict) -> dict:
         for m in mistakes:
             f.write(json.dumps(m, separators=(",", ":")) + "\n")
     Store.write_json_atomic(store.derived / "cards.json", cards)
+    if app_out is not None:
+        Store.write_json_atomic(Path(app_out), app_cards(cards))
     return {"games": n_games, "analyzed": n_analyzed, "mistakes": len(mistakes), "cards": len(cards)}

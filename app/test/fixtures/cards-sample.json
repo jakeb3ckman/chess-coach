@@ -1,0 +1,185 @@
+{
+ "_source": "Copied from the app card export (coach build --app-out) on 2026-11-14. Every position, solution and line is stored Stockfish 19 output: 1 thread, 16 MB hash, pass 2 at 2,000,000 nodes, MultiPV 2 (see data/analysis/).",
+ "format": 1,
+ "cards": [
+  {
+   "id": "16b450be2bd1",
+   "deck": "tactics",
+   "fen": "r1bqkb1r/pppp1p1p/5np1/4p3/2BnP3/3P1Q2/PPP2PPP/RNB1K1NR w KQkq - 1 6",
+   "solution": "f3d1",
+   "line": "f3d1 d7d5 e4d5 b7b5 c2c3 b5c4 c3d4 c4d3 d4e5 f6d5",
+   "color": "white",
+   "prev": "c6d4",
+   "occ": [
+    {
+     "link": "https://www.chess.com/game/live/174417205376",
+     "site": "chesscom",
+     "move": "f3e3",
+     "drop": 36.5,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-09-13"
+    },
+    {
+     "link": "https://www.chess.com/game/live/174036557516",
+     "site": "chesscom",
+     "move": "f3e3",
+     "drop": 36.5,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-09-05"
+    },
+    {
+     "link": "https://www.chess.com/game/live/173996955570",
+     "site": "chesscom",
+     "move": "f3e3",
+     "drop": 36.5,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-09-04"
+    },
+    {
+     "link": "https://www.chess.com/game/live/173980974894",
+     "site": "chesscom",
+     "move": "f3e3",
+     "drop": 36.5,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-09-04"
+    },
+    {
+     "link": "https://www.chess.com/game/live/173968808442",
+     "site": "chesscom",
+     "move": "f3h3",
+     "drop": 36.0,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-09-04"
+    },
+    {
+     "link": "https://www.chess.com/game/live/173649855532",
+     "site": "chesscom",
+     "move": "f3h3",
+     "drop": 36.0,
+     "label": "blunder",
+     "tc": "blitz",
+     "at": "2026-08-28"
+    },
+    {
+     "link": "https://www.chess.com/game/live/173629362886",
+     "site": "chesscom",
+     "move": "f3h3",
+     "drop": 36.0,
+     "label": "blunder",
+     "tc": "blitz",
+     "at": "2026-08-28"
+    },
+    {
+     "link": "https://www.chess.com/game/live/173628534472",
+     "site": "chesscom",
+     "move": "f3e3",
+     "drop": 36.5,
+     "label": "blunder",
+     "tc": "blitz",
+     "at": "2026-08-28"
+    },
+    {
+     "link": "https://www.chess.com/game/live/173507081174",
+     "site": "chesscom",
+     "move": "f3g3",
+     "drop": 27.6,
+     "label": "blunder",
+     "tc": "blitz",
+     "at": "2026-08-25"
+    }
+   ]
+  },
+  {
+   "id": "507a6be8e82c",
+   "deck": "tactics",
+   "fen": "r1b1k1nr/ppp2Nbp/6p1/2n5/2B1PB2/2N4P/PPP2PP1/R2K3R b kq - 0 11",
+   "solution": "c8e6",
+   "line": "c8e6 f7e5",
+   "color": "black",
+   "prev": "e5f7",
+   "occ": [
+    {
+     "link": "https://lichess.org/nxQwm0wd/black#21",
+     "site": "lichess",
+     "move": "g8f6",
+     "drop": 31.8,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-11-11"
+    }
+   ]
+  },
+  {
+   "id": "5a0673dd32c7",
+   "deck": "tactics",
+   "fen": "rnbqkb1r/ppp1pppp/3p1n2/4P3/3P4/8/PPP2PPP/RNBQKBNR b KQkq - 0 3",
+   "solution": "d6e5",
+   "line": "d6e5 d4e5 d8d1 e1d1 f6g4 d1e1 g4e5 b1c3 b8c6 f2f4",
+   "color": "black",
+   "prev": "e4e5",
+   "occ": [
+    {
+     "link": "https://www.chess.com/game/live/172376371310",
+     "site": "chesscom",
+     "move": "f6e4",
+     "drop": 48.3,
+     "label": "blunder",
+     "tc": "blitz",
+     "at": "2026-08-01"
+    },
+    {
+     "link": "https://www.chess.com/game/live/167828375866",
+     "site": "chesscom",
+     "move": "f6d5",
+     "drop": 20.8,
+     "label": "blunder",
+     "tc": "rapid",
+     "at": "2026-04-25"
+    },
+    {
+     "link": "https://www.chess.com/game/live/167162781038",
+     "site": "chesscom",
+     "move": "f6e4",
+     "drop": 48.3,
+     "label": "blunder",
+     "tc": "rapid",
+     "at": "2026-04-11"
+    },
+    {
+     "link": "https://www.chess.com/game/live/167132156018",
+     "site": "chesscom",
+     "move": "f6d5",
+     "drop": 20.8,
+     "label": "blunder",
+     "tc": "rapid",
+     "at": "2026-04-10"
+    }
+   ]
+  },
+  {
+   "id": "1031dd9f11cf",
+   "deck": "tactics",
+   "fen": "r3kb1r/pp1N1ppp/4p3/3p1b2/3QpB2/2P1P3/Pq3PPP/R3K2R w KQkq - 0 13",
+   "solution": "e1g1",
+   "line": "e1g1 e8d7 f1b1 b2a3 b1b7 d7e8 a1b1 f7f6 h2h3 f8e7",
+   "color": "white",
+   "prev": "b5b2",
+   "occ": [
+    {
+     "link": "https://www.chess.com/game/live/186397239308",
+     "site": "chesscom",
+     "move": "a1d1",
+     "drop": 17.3,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-11-02"
+    }
+   ]
+  }
+ ]
+}

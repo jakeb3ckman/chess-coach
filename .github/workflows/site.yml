@@ -1,0 +1,57 @@
+# Build the trainer app and publish it on GitHub Pages.
+# Runs after every pipeline run (so new cards appear), on app changes, or by hand.
+# Only app/dist is published: the app code, its icons, and data/cards.json.
+name: site
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", "coach/build.py", "coach/classify.py", "config/**", ".github/workflows/site.yml"]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: main  # latest data, including commits made earlier in the same pipeline run
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: "0.11.5"
+      - run: uv sync --frozen
+      - name: Build cards from stored analysis (no engine needed)
+        run: uv run python -m coach build --app-out data/derived/app-cards.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version-file: app/.node-version
+      - run: npm ci
+        working-directory: app
+      - run: npm run typecheck && npm test
+        working-directory: app
+      - run: node build.mjs --cards ../data/derived/app-cards.json
+        working-directory: app
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with:
+          path: app/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1
