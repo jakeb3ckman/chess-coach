@@ -217,3 +217,39 @@ Each would move up with its tip if a pattern became clear.
 2. **Repertoire choices are a judgment of degree.** 2.Qh5 is 5.5 Win% behind 2.Nf3 by Stockfish, yet your record with Qh5 is better than with Nf3. Both facts are shown side by side; neither is advice.
 3. **Errors without a card:** the 4 errors covered by tactics cards (in 2 positions) are already in your deck. The 2 "too many good moves" positions stay report-only.
 4. **The over-time chart needs patience.** With 30-game blocks, only a change of about 17 points or more shows as clear. Most of your openings are a few months old in your data.
+
+## 11. Addition: Progress section (version 2.4.1, 2026-11-15)
+
+**Where:** at the top of the Openings screen, for each colour. No new engine work: everything comes from stored games, the stored position pass, and your reviews on the device. Your reviews and sync are untouched: no database change and no event-format change. Cards only gained an `opening` field.
+
+**Training start:** `training_start = "2026-11-14"` in `config/settings.toml` (`[progress]`). A game counts as "since" when it ended on or after that date in New York time.
+
+**Per opening group** (the 84 groups with 10+ games). Groups with games since the start come first; the rest are in a collapsed list.
+1. **Leak positions in real games:** every error and repertoire-choice position of the group. Positions reached since the start come first.
+   - **What it shows:** how often I played a good move (within 2 Win% of the best, by the position pass), my old leak move, another searched move, or (where 5+ moves are within 2 Win%) a move the pass didn't check. All of this before and since the start.
+   - **Which group a position belongs to:** the group most of its games belong to.
+2. **Cards per opening:** Known / Unsure / Missed / not yet seen.
+   - **How it's counted:** Known, Unsure and Missed are each card's result after its latest showing, counted on the device from its review log, and never published.
+   - **Which opening a card belongs to:** the group of the game it came from. For a card that occurred in several games, that is the latest one.
+3. **Blunders per 100 moves in my first 15 moves:** before and since, with the blunders, moves and games behind each number. A blunder means losing 15+ Win%, deep pass where stored, the same as for mistakes.
+
+**Rules:**
+- Every number shows its counts.
+- Any comparison resting on fewer than 10 games since the start says "not enough games yet", with the raw counts still shown. The 10 is a setting.
+- The rating-adjusted trend chart stays in each group's detail view.
+
+**Data today:** 6 games since 2026-11-14, in 4 groups, so every comparison says "not enough games yet". Four leak positions were reached since the start:
+
+| Position | Since the start | Result |
+|---|---|---|
+| 1.d4 d5 2.Nc3 Nc6 | 1 game | good move |
+| 1.d4 e5 | 1 game | good move (2.dxe5) |
+| 1.e4 | 3 games | other moves |
+| 1.e4 g6 2.Nf3 | 2 games | other moves |
+
+**Tested:**
+- Python and app suites pass (64 and 29). The leak test now also checks that every leak position is placed in a group, that its counts add up, and that the position counts match the move tree.
+- In the browser at 393×852: the section renders. Card counts matched the device's reviews: 5 answered cards, 4 Known and 1 Missed, each in the right opening.
+- Live: version 2.4.1; `openings.json` carries the progress data for all 168 leak positions; all 2,587 cards carry their opening.
+
+**Not tested:** the section on your iPhone with your real reviews. Those counts exist only on the device.
