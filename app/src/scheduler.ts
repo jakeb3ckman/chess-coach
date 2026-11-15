@@ -113,6 +113,7 @@ export function applyEvent(
 export function replayCard(s: Scheduler, events: ReviewEvent[], gameMoves?: Set<string>): CardState | undefined {
   const seen = new Set<string>();
   const sorted = events
+    .filter((e) => !(e.v === 2 && e.kind === 'set'))
     .filter((e) => (seen.has(e.id) ? false : (seen.add(e.id), true)))
     .sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : a.id < b.id ? -1 : 1));
   let st: CardState | undefined;

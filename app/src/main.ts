@@ -1,22 +1,27 @@
 // The trainer UI (spec section 6.1). Board: chessground. Rules: chess.js.
-// Scheduling: ts-fsrs (scheduler.ts). The day's set: session.ts.
-// Everything is saved on this device; sync is milestone 2.3.
+// Scheduling: ts-fsrs (scheduler.ts). The day's sets: session.ts (derived from events).
 import { Chessground } from '@lichess-org/chessground';
 import type { Api } from '@lichess-org/chessground/api';
 import type { Key } from '@lichess-org/chessground/types';
 import type { DrawShape } from '@lichess-org/chessground/draw';
-import { allEvents, getMeta, loadSet, loadStates, openDb, outboxCount, replaceStates, saveAll, setMeta } from './db.ts';
+import {
+  allEvents, eventsForDay, getMeta, loadLegacySet, loadStates, openDb, outboxCount, replaceStates, saveAll, setMeta,
+} from './db.ts';
 import { dayKey, returnText } from './day.ts';
-import { applyOutcome, counts, createSet, isComplete, type DaySet } from './session.ts';
+import {
+  chooseSetCards, counts, deriveSet, EXTRA_SET_NEW, extraSetForecast, isComplete, isSetEvent, NEW_PER_DAY,
+  newStartedToday, nextStatus, type DaySet,
+} from './session.ts';
 import {
   applyEvent, getScheduler, previewDue, Rating, replayCard, scheduledToday, type CardState, type Scheduler,
 } from './scheduler.ts';
 import { inCheck, isPromotion, legalDests, lineSteps, sanOf, uciSquares, type LineStep } from './chessutil.ts';
+import { cleanEvents, mergeEvents } from './ledger.ts';
 import type { AppCard, CardsFile, ReviewEvent, ReviewEventV2, Status } from './types.ts';
 
 declare const BUILD_ID: string;
 declare const APP_VERSION: string;
-const SCHEMA = 2;
+const SCHEMA = 3;
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -43,14 +48,49 @@ interface App {
   cards: AppCard[];
   byId: Map<string, AppCard>;
   states: Map<string, CardState>;
+  today: string;
+  dayEvents: ReviewEvent[]; // every event of the current study day (all devices)
   set: DaySet;
   cg: Api;
   sh?: Showing;
   reloadWhenIdle: boolean;
-  setStarted: number;
 }
 
 let app: App;
+
+// ---------- screen edges (top strip under the status bar, home indicator)
+
+interface SafeArea { envTop: number; envBottom: number; full: boolean; standalone: boolean; mode: string; top: number; bottom: number }
+let safeArea: SafeArea;
+
+/**
+ * iOS 26.1+ / 27 can draw a frosted system bar over the top of a Home Screen app
+ * while reporting a top safe-area inset of 0 (WebKit bug 301994). Text under that
+ * strip is blurred. When the page runs under the status bar (its height equals
+ * the screen height) but the reported inset is 0, keep all content below a 62 px
+ * strip and above a 34 px home-indicator area. Settings can force this on or off.
+ */
+function applySafeArea() {
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;top:0;left:0;visibility:hidden;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)';
+  document.body.appendChild(probe);
+  const cs = getComputedStyle(probe);
+  const envTop = parseFloat(cs.paddingTop) || 0;
+  const envBottom = parseFloat(cs.paddingBottom) || 0;
+  probe.remove();
+  const standalone = isStandalone();
+  const portrait = innerHeight >= innerWidth;
+  const screenH = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+  const full = standalone && Math.abs(innerHeight - screenH) <= 2;
+  let mode = 'auto';
+  try { mode = localStorage.getItem('topSpace') ?? 'auto'; } catch { /* private mode */ }
+  const fix = mode === 'on' || (mode === 'auto' && full && envTop < 20);
+  const top = fix ? Math.max(envTop, 62) : envTop;
+  const bottom = fix && envBottom < 10 ? 34 : envBottom;
+  document.documentElement.style.setProperty('--top-pad', `${top}px`);
+  document.documentElement.style.setProperty('--bottom-pad', `${bottom}px`);
+  safeArea = { envTop, envBottom, full, standalone, mode, top, bottom };
+}
 
 // ---------- start-up, updates, migration
 
@@ -71,7 +111,41 @@ function setupServiceWorker() {
   });
 }
 
+async function migrate(db: IDBDatabase, sched: Scheduler, byId: Map<string, AppCard>, device: string): Promise<void> {
+  const schema = (await getMeta<number>(db, 'schema')) ?? 1;
+  if (schema < 2) {
+    // Format 1 -> 2: keep every review, recompute each card's schedule from its
+    // reviews under the new rules (first answer of the day counts, 1-day / 2-day steps).
+    const events = await allEvents(db);
+    const byCard = new Map<string, ReviewEvent[]>();
+    for (const ev of events) byCard.set(ev.card_id, [...(byCard.get(ev.card_id) ?? []), ev]);
+    const fresh: CardState[] = [];
+    for (const [id, evs] of byCard) {
+      const st = replayCard(sched, evs, new Set((byId.get(id)?.occ ?? []).map((o) => o.move)));
+      if (st) fresh.push(st);
+    }
+    await replaceStates(db, fresh, [...(await loadStates(db)).values()], 'backup_schema1_states', 2);
+  }
+  if (schema < 3) {
+    // Schema 2 -> 3: sets become events. Today's stored set (if any) is written as
+    // a 'set' event so the same set continues, and so sync can share it later.
+    const today = dayKey(new Date());
+    const legacy = await loadLegacySet(db, today);
+    const evs = await eventsForDay(db, today);
+    if (legacy && legacy.cards.length && !evs.some(isSetEvent)) {
+      const e: ReviewEventV2 = {
+        id: crypto.randomUUID(), v: 2, card_id: '', ts: legacy.created_at, day: today, device,
+        kind: 'set', showing: 0, sched: false, round: 1, cards: legacy.cards,
+      };
+      await saveAll(db, [e], []);
+    }
+    await setMeta(db, 'schema', 3);
+  }
+}
+
 async function start() {
+  applySafeArea();
+  addEventListener('resize', () => applySafeArea());
   setupServiceWorker();
   const db = await openDb();
   let device = await getMeta<string>(db, 'device');
@@ -90,24 +164,8 @@ async function start() {
     getScheduler(),
   ]);
   const byId = new Map(file.cards.map((c) => [c.id, c]));
-  let states = await loadStates(db);
-  const schema = (await getMeta<number>(db, 'schema')) ?? 1;
-  let migratedEvents: ReviewEvent[] = [];
-  if (schema < SCHEMA) {
-    // Format 1 -> 2: keep every review, recompute each card's schedule from its
-    // reviews under the new rules (first answer of the day counts, 1-day / 2-day steps).
-    migratedEvents = await allEvents(db);
-    const byCard = new Map<string, ReviewEvent[]>();
-    for (const ev of migratedEvents) byCard.set(ev.card_id, [...(byCard.get(ev.card_id) ?? []), ev]);
-    const fresh: CardState[] = [];
-    for (const [id, evs] of byCard) {
-      const moves = new Set((byId.get(id)?.occ ?? []).map((o) => o.move));
-      const st = replayCard(sched, evs, moves);
-      if (st) fresh.push(st);
-    }
-    await replaceStates(db, fresh, [...states.values()], 'backup_schema1_states', SCHEMA);
-    states = await loadStates(db);
-  }
+  await migrate(db, sched, byId, device);
+  const states = await loadStates(db);
 
   const cg = Chessground($('#board'), {
     coordinates: true,
@@ -121,36 +179,72 @@ async function start() {
     drawable: { enabled: false, visible: true },
   });
 
-  const now = new Date();
-  const today = dayKey(now);
-  let set = await loadSet(db, today);
-  if (!set) {
-    set = createSet(today, file.cards, states, migratedEvents, now);
-    await saveAll(db, [], [], set);
-  }
-  app = { db, sched, device, cards: file.cards, byId, states, set, cg, reloadWhenIdle: false, setStarted: Date.now() };
+  const today = dayKey(new Date());
+  const dayEvents = await eventsForDay(db, today);
+  app = {
+    db, sched, device, cards: file.cards, byId, states, today, dayEvents,
+    set: deriveSet(today, dayEvents), cg, reloadWhenIdle: false,
+  };
   $('#menu').addEventListener('click', openSettings);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && (!app.sh || app.sh.done) && dayKey(new Date()) !== app.set.day) showNext();
+    if (document.visibilityState === 'visible' && (!app.sh || app.sh.done) && dayKey(new Date()) !== app.today) showNext();
   });
   if (BUILD_ID === 'dev') {
-    // Local testing only (removed from published builds): play a move on the current card.
+    // Local testing only (removed from published builds).
     (window as unknown as Record<string, unknown>).__test = { app: () => app, move: (u: string) => onMove(u.slice(0, 2) as Key, u.slice(2, 4) as Key) };
   }
   showInstallHint();
-  if (set.pending_grade) await grade(set.pending_grade, Rating.Good); // app was closed before Next
-  if (set.paused && !isComplete(set)) showPaused();
+  await afterStart();
+}
+
+/** Grade a card left waiting for Next, then show the right screen. */
+async function afterStart() {
+  const pending = await getMeta<{ day: string; card: string }>(app.db, 'pending_grade');
+  if (pending && pending.day === app.today) await grade(pending.card, Rating.Good); // closed before Next
+  else if (pending) await setMeta(app.db, 'pending_grade', null);
+  const paused = await getMeta<string>(app.db, 'paused');
+  if (paused === app.today && !isComplete(app.set) && app.set.round > 0) showPaused();
   else showNext();
 }
 
-// ---------- the set
+// ---------- the day's sets
 
+function rederive() {
+  app.set = deriveSet(app.today, app.dayEvents);
+}
+
+/** Log a new set of the day ('set' event) and make it current. */
+async function startSet(round: number, ids: string[]) {
+  const e: ReviewEventV2 = {
+    id: crypto.randomUUID(), v: 2, card_id: '', ts: new Date().toISOString(), day: app.today, device: app.device,
+    kind: 'set', showing: 0, sched: false, round, cards: ids,
+  };
+  await saveAll(app.db, [e], []);
+  app.dayEvents.push(e);
+  rederive();
+}
+
+function cardsInTodaysSets(): Set<string> {
+  const s = new Set<string>();
+  for (const e of app.dayEvents) if (isSetEvent(e)) for (const id of e.cards ?? []) s.add(id);
+  return s;
+}
+
+/** On a new study day, switch to it and make its first set. */
 async function ensureToday() {
   const now = new Date();
   const today = dayKey(now);
-  if (app.set.day === today) return;
-  app.set = (await loadSet(app.db, today)) ?? createSet(today, app.cards, app.states, [], now);
-  await saveAll(app.db, [], [], app.set);
+  if (app.today !== today) {
+    app.today = today;
+    app.dayEvents = await eventsForDay(app.db, today);
+    rederive();
+  }
+  if (app.set.round === 0) {
+    const allowed = Math.max(0, NEW_PER_DAY - newStartedToday(app.states, today));
+    const pick = chooseSetCards(app.cards, app.states, now, allowed, cardsInTodaysSets());
+    const ids = [...pick.due, ...pick.fresh];
+    if (ids.length) await startSet(1, ids);
+  }
 }
 
 function renderCounts() {
@@ -163,63 +257,99 @@ async function showNext() {
   if (app.reloadWhenIdle) return location.reload();
   await ensureToday();
   renderCounts();
-  while (app.set.order.length && !app.byId.has(app.set.order[0])) {
-    // A card that left the deck (card rules changed): drop it from today's set.
-    const gone = app.set.order.shift()!;
-    app.set.status[gone] = 'known';
-  }
-  if (isComplete(app.set) || app.set.cards.length === 0) return showComplete();
-  showCard(app.byId.get(app.set.order[0])!);
+  const next = app.set.order.find((id) => app.byId.has(id)); // skip cards that left the deck
+  if (!next || isComplete(app.set)) return showComplete();
+  showCard(app.byId.get(next)!);
 }
 
-function showComplete() {
+function idleBoard() {
   app.sh = undefined;
+  setBoardShrink(0);
   app.cg.set({ viewOnly: true, movable: { color: undefined, dests: new Map() }, drawable: { autoShapes: [] } });
-  const set = app.set;
-  const n = set.cards.length;
-  renderCounts();
-  if (n === 0) {
-    banner('done', 'Nothing to review today.');
-    $('#panel').innerHTML = `<p>New cards tomorrow (after 4 a.m.).</p>`;
-    return;
+}
+
+async function firstTryRate(): Promise<{ rate: number; n: number }> {
+  // Share of scheduling answers that were right, over the last 14 study days.
+  let right = 0, n = 0;
+  const now = Date.now();
+  for (let d = 0; d < 14; d++) {
+    const evs = await eventsForDay(app.db, dayKey(new Date(now - d * 86_400_000)));
+    for (const e of evs) if (e.v === 2 && e.sched) { n++; if ((e.rating ?? 1) >= Rating.Good) right++; }
   }
-  const firstTry = set.cards.filter((id) => (set.showings[id] ?? 0) <= 1).length;
-  banner('done', '✓ Set complete');
-  $('#panel').innerHTML = `
-    <p class="big">All ${n} cards answered correctly.</p>
-    <p>${firstTry} right on the first try, ${n - firstTry} needed more than one showing.</p>
-    <p class="muted">The next set is ready tomorrow after 4 a.m.</p>`;
+  return { rate: n >= 5 ? right / n : 0.5, n };
+}
+
+async function showComplete() {
+  idleBoard();
+  renderCounts();
+  const set = app.set;
+  const pick = chooseSetCards(app.cards, app.states, new Date(), EXTRA_SET_NEW, cardsInTodaysSets());
+  const more = pick.due.length + pick.fresh.length;
+  let html: string;
+  if (set.cards.length === 0) {
+    banner('done', 'Nothing to review right now.');
+    html = '';
+  } else {
+    const firstTry = set.cards.filter((id) => (set.showings[id] ?? 0) <= 1).length;
+    banner('done', `✓ Set ${set.round > 1 ? set.round + ' ' : ''}complete`);
+    html = `<p class="big">All ${set.cards.length} cards answered correctly.</p>
+      <p>${firstTry} right on the first try, ${set.cards.length - firstTry} needed more than one showing.</p>`;
+  }
+  if (more) {
+    const { rate, n } = await firstTryRate();
+    const f = extraSetForecast(pick.fresh.length, rate);
+    const parts = [];
+    if (pick.fresh.length) parts.push(`${pick.fresh.length} new card${pick.fresh.length === 1 ? '' : 's'}`);
+    if (pick.due.length) parts.push(`${pick.due.length} review${pick.due.length === 1 ? '' : 's'} due now`);
+    html += `<div class="forecast"><p><b>Another set:</b> ${parts.join(' and ')}.</p>`;
+    if (pick.fresh.length) {
+      html += `<p class="muted">The new cards add about <b>${f.tomorrow}</b> review${f.tomorrow === 1 ? '' : 's'} tomorrow and <b>${f.dayAfter}</b> the day after
+        (a miss comes back tomorrow, a right first answer in 2 days; based on ${n >= 5 ? `your first-try rate of ${Math.round(rate * 100)}% over the last 14 days` : 'an assumed 50% first-try rate until you have more reviews'}).</p>`;
+    }
+    html += `</div>`;
+  } else if (set.cards.length) {
+    html += `<p class="muted">No more cards right now. The next set is ready tomorrow after 4 a.m.</p>`;
+  }
+  $('#info').innerHTML = html;
+  $('#actions').innerHTML = more ? `<div class="buttons"><button id="another" class="primary">Start another set</button></div>` : '';
+  $('#another')?.addEventListener('click', async () => {
+    $('#another').setAttribute('disabled', '');
+    await startSet(set.round + 1, [...pick.due, ...pick.fresh]);
+    await setMeta(app.db, 'paused', null);
+    showNext();
+  });
 }
 
 function showPaused() {
-  app.sh = undefined;
+  idleBoard();
   renderCounts();
-  app.cg.set({ viewOnly: true, movable: { color: undefined, dests: new Map() }, drawable: { autoShapes: [] } });
   banner('prompt', 'Set saved');
-  $('#panel').innerHTML = `
-    <p>${app.set.order.length} card${app.set.order.length === 1 ? '' : 's'} left in today's set. Your place is saved.</p>
-    <div class="buttons"><button id="resume" class="primary">Resume</button></div>`;
+  $('#info').innerHTML = `<p>${app.set.order.length} card${app.set.order.length === 1 ? '' : 's'} left in this set. Your place is saved.</p>`;
+  $('#actions').innerHTML = `<div class="buttons"><button id="resume" class="primary">Resume</button></div>`;
   $('#resume').addEventListener('click', async () => {
-    app.set.paused = false;
-    await saveAll(app.db, [], [], app.set);
+    await setMeta(app.db, 'paused', null);
     showNext();
   });
 }
 
 async function finishLater() {
-  app.set.paused = true;
-  await saveAll(app.db, [], [], app.set);
+  await setMeta(app.db, 'paused', app.today);
   showPaused();
 }
 
 // ---------- one showing
 
+function setBoardShrink(px: number) {
+  document.documentElement.style.setProperty('--board-shrink', `${Math.max(0, Math.round(px))}px`);
+}
+
 function showCard(card: AppCard) {
+  setBoardShrink(0);
   const n = (app.set.showings[card.id] ?? 0) + 1;
   const st = app.states.get(card.id);
   app.sh = {
     card, n,
-    first: !scheduledToday(st, app.set.day),
+    first: !scheduledToday(st, app.today),
     attempts: 0, failed: false, hinted: false, revealed: false, done: false,
     shownAt: performance.now(),
     lines: { best: lineSteps(card.fen, card.line), ref: refSteps(card) },
@@ -231,10 +361,10 @@ function showCard(card: AppCard) {
   const status = app.set.status[card.id] ?? 'remaining';
   const where = status === 'missed' ? 'You missed this one earlier today.' : status === 'unsure' ? 'Once more to make it Known.' : (st ? 'Review' : 'New card');
   const k = card.occ.length;
-  $('#panel').innerHTML = `
+  $('#info').innerHTML = `
     <p class="muted">${where} · from your ${esc(card.occ[0].tc)} game, ${esc(card.occ[0].at)}${k > 1 ? ` · missed in ${k} games` : ''}</p>
-    <div id="tools"></div>
-    <p class="later"><button id="later" class="link">Finish later</button></p>`;
+    <p id="toolnote" class="muted"></p>`;
+  $('#actions').innerHTML = `<p class="later"><button id="later" class="link">Finish later</button></p>`;
   $('#later').addEventListener('click', finishLater);
 }
 
@@ -271,21 +401,26 @@ function banner(kind: 'prompt' | 'wrong' | 'done' | 'revealed', html: string) {
 function ev(kind: ReviewEventV2['kind'], extra: Partial<ReviewEventV2>): ReviewEventV2 {
   const sh = app.sh!;
   return {
-    id: crypto.randomUUID(), v: 2, card_id: sh.card.id, ts: new Date().toISOString(), day: app.set.day,
+    id: crypto.randomUUID(), v: 2, card_id: sh.card.id, ts: new Date().toISOString(), day: app.today,
     device: app.device, kind, showing: sh.n, sched: false, ms: Math.round(performance.now() - sh.shownAt), ...extra,
   };
 }
 
-/** Save events (and the card's new state + the set) in one transaction. */
+/** Save events and the card's new state in one transaction, then rebuild the set. */
 async function commit(events: ReviewEventV2[], rating: number | null = null) {
   const sh = app.sh!;
   let st = app.states.get(sh.card.id);
   for (const e of events) st = applyEvent(app.sched, st, e, e.sched ? rating : null, !!e.habit);
-  app.set.showings[sh.card.id] = sh.n;
-  await saveAll(app.db, events, st ? [st] : [], app.set);
+  await saveAll(app.db, events, st ? [st] : []);
   if (st) app.states.set(sh.card.id, st);
+  app.dayEvents.push(...events);
+  rederive();
   renderCounts();
+  afterCommit();
 }
+
+/** Hook for sync (2.3): called after every saved answer. */
+let afterCommit: () => void = () => {};
 
 /** First failure in a showing: the card becomes Missed; on the first showing of
  * the day this is the one event that tells the scheduler "Again". */
@@ -293,8 +428,7 @@ function failOnce(): { sched: boolean; status: Status } {
   const sh = app.sh!;
   if (sh.failed) return { sched: false, status: 'missed' };
   sh.failed = true;
-  const status = applyOutcome(app.set, sh.card.id, false);
-  return { sched: sh.first, status };
+  return { sched: sh.first, status: 'missed' };
 }
 
 async function onMove(orig: Key, dest: Key) {
@@ -308,10 +442,9 @@ async function onMove(orig: Key, dest: Key) {
   if (uci === card.solution) {
     sh.done = true;
     if (!sh.failed) {
-      const status = applyOutcome(app.set, card.id, true);
-      const e = ev('move', { attempt: sh.attempts, move_played: uci, correct: true, status_after: status });
-      if (sh.first) app.set.pending_grade = card.id; // Next / Too easy decides the rating
-      await commit([e]);
+      const status = nextStatus(app.set.status[card.id] ?? 'remaining', true);
+      if (sh.first) await setMeta(app.db, 'pending_grade', { day: app.today, card: card.id }); // Next / Too easy decides
+      await commit([ev('move', { attempt: sh.attempts, move_played: uci, correct: true, status_after: status })]);
     } else {
       await commit([ev('move', { attempt: sh.attempts, move_played: uci, correct: true, status_after: 'missed' })]);
     }
@@ -340,14 +473,15 @@ function toolShapes(): DrawShape[] {
 }
 
 function showTools() {
-  $('#tools').innerHTML = `<div class="buttons three">
+  $('#actions').innerHTML = `<div class="buttons three">
       <button id="t-hint" class="secondary">Hint</button>
       <button id="t-sol" class="secondary">Solution</button>
       <button id="t-mine" class="secondary">My move</button></div>
-    <p id="toolnote" class="muted"></p>`;
+    <p class="later"><button id="later" class="link">Finish later</button></p>`;
   $('#t-hint').addEventListener('click', onHint);
   $('#t-sol').addEventListener('click', onSolution);
   $('#t-mine').addEventListener('click', onMyMove);
+  $('#later').addEventListener('click', finishLater);
 }
 
 async function onHint() {
@@ -392,7 +526,7 @@ function lineChips(which: 'best' | 'ref'): string {
   return app.sh!.lines[which].map((s, i) => `<button class="mv" data-line="${which}" data-i="${i}">${esc(s.label)}</button>`).join('');
 }
 
-function showAnswer() {
+async function showAnswer() {
   const sh = app.sh!;
   const card = sh.card;
   const best = sanOf(card.fen, card.solution);
@@ -407,63 +541,82 @@ function showAnswer() {
   if (st && st.habit > 0) tags.push(`habit ×${st.habit}`);
   const analysis = `https://lichess.org/analysis/standard/${card.fen.replace(/ /g, '_')}?color=${card.color}`;
   const drop = (g.win_before - g.win_after).toFixed(1);
-  const ref = sh.lines.ref.length
-    ? `<div class="row"><span class="what">Refutation</span><span class="ev">${esc(evalWords(g.eval))}</span></div>
-       <div class="moves">${lineChips('ref')}</div>`
-    : `<div class="row"><span class="what">Refutation</span><span class="muted">not computed yet</span></div>`;
-  $('#panel').innerHTML = `
-    <div class="row"><span class="what">Best line</span><span class="ev">${esc(evalWords(card.best_eval))}</span></div>
-    <div class="moves">${lineChips('best')}</div>
-    <div class="row"><span class="what">In the game you played <b>${esc(gameSan)}</b></span><span class="ev">${esc(evalWords(g.eval))}</span></div>
-    ${ref}
-    <p class="muted small">Evaluations in pawns from your side. Win% ${g.win_before.toFixed(1)} → ${g.win_after.toFixed(1)} (−${drop}).${card.occ.length > 1 ? ` Missed in ${card.occ.length} games.` : ''}</p>
+  // One block for the game move and its refutation: they share one evaluation.
+  const refChips = sh.lines.ref.length
+    ? `<div class="moves">${lineChips('ref')}</div>`
+    : `<p class="muted small">Refutation line not computed yet.</p>`;
+  $('#info').innerHTML = `
+    <div id="essential">
+      <div class="row"><span class="what">Best line</span><span class="ev">${esc(evalWords(card.best_eval))}</span></div>
+      <div class="moves">${lineChips('best')}</div>
+      <div class="row"><span class="what">You played <b>${esc(gameSan)}</b>${sh.lines.ref.length ? ', refuted by' : ''}</span><span class="ev">${esc(evalWords(g.eval))}</span></div>
+      ${refChips}
+      <p class="muted small">Pawns from your side. Win% ${g.win_before.toFixed(1)} → ${g.win_after.toFixed(1)} (−${drop})${card.occ.length > 1 ? ` · missed in ${card.occ.length} games` : ''}</p>
+    </div>
     ${tags.length ? `<p class="tags">${tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</p>` : ''}
     <div class="stepper"><button class="step" id="start" aria-label="Back to the puzzle">↺</button><button class="step" id="prev" aria-label="Back">◀</button><button class="step" id="next" aria-label="Forward">▶</button></div>
-    <p class="links"><a href="${esc(card.occ[0].link)}" target="_blank" rel="noopener">Open the game ↗</a><a href="${esc(analysis)}" target="_blank" rel="noopener">Analysis board ↗</a></p>
-    <div class="buttons" id="grade"></div>`;
-  $('#panel').querySelectorAll<HTMLButtonElement>('.mv').forEach((b) =>
+    <p class="links"><a href="${esc(card.occ[0].link)}" target="_blank" rel="noopener">Open the game ↗</a><a href="${esc(analysis)}" target="_blank" rel="noopener">Analysis board ↗</a></p>`;
+  $('#info').scrollTop = 0;
+  $('#info').querySelectorAll<HTMLButtonElement>('.mv').forEach((b) =>
     b.addEventListener('click', () => view(b.dataset.line as 'best' | 'ref', Number(b.dataset.i))));
   $('#start').addEventListener('click', () => view('best', -1));
   $('#prev').addEventListener('click', () => view(sh.view.line, sh.view.idx - 1));
   $('#next').addEventListener('click', () => view(sh.view.line, sh.view.idx + 1));
-  renderGradeButtons();
+  await renderGradeButtons();
   view('best', sh.revealed || sh.failed ? -1 : 0);
+  fitEssential();
 }
 
-function renderGradeButtons() {
+/** If the lines don't fit above the pinned button, shrink the board a little
+ * (never below 260 px) rather than hiding lines. */
+function fitEssential() {
+  requestAnimationFrame(() => {
+    const info = $('#info');
+    const ess = $('#essential');
+    if (!info || !ess) return;
+    const overflow = ess.getBoundingClientRect().bottom - info.getBoundingClientRect().bottom + 4;
+    if (overflow <= 0) return;
+    const board = $('#board').getBoundingClientRect().width;
+    setBoardShrink(Math.min(overflow, Math.max(0, board - 260)));
+  });
+}
+
+async function renderGradeButtons() {
   const sh = app.sh!;
   const card = sh.card;
   const now = new Date();
-  const box = $('#grade');
-  if (app.set.pending_grade === card.id) {
+  const box = $('#actions');
+  const pending = await getMeta<{ day: string; card: string }>(app.db, 'pending_grade');
+  if (pending?.card === card.id && pending.day === app.today) {
     const st = app.states.get(card.id);
     const good = returnText(previewDue(app.sched, st, Rating.Good, now, card.id), now);
     const easy = returnText(previewDue(app.sched, st, Rating.Easy, now, card.id), now);
-    box.innerHTML = `
+    box.innerHTML = `<div class="buttons">
       <button id="easy" class="secondary">Too easy<small>Next: back ${esc(easy)}</small></button>
-      <button id="go" class="primary">Next<small>Next: back ${esc(good)}</small></button>`;
+      <button id="go" class="primary">Next<small>Next: back ${esc(good)}</small></button></div>`;
     $('#easy').addEventListener('click', () => grade(card.id, Rating.Easy).then(showNext));
-  } else {
-    const status = app.set.status[card.id];
-    const st = app.states.get(card.id);
-    const due = st ? returnText(st.fsrs.dueAt, now) : '';
-    const cap = status === 'missed' ? `Again in a few cards, then back ${due}`
-      : status === 'unsure' ? 'Once more later in this set'
-      : `Known for today · back ${due}`;
-    box.innerHTML = `<button id="go" class="primary">Next<small>${esc(cap)}</small></button>`;
+    $('#go').addEventListener('click', async () => {
+      $('#go').setAttribute('disabled', '');
+      await grade(card.id, Rating.Good);
+      showNext();
+    });
+    return;
   }
-  $('#go').addEventListener('click', async () => {
-    $('#go').setAttribute('disabled', '');
-    if (app.set.pending_grade === card.id) await grade(card.id, Rating.Good);
-    showNext();
-  });
+  const status = app.set.status[card.id];
+  const st = app.states.get(card.id);
+  const due = st ? returnText(st.fsrs.dueAt, now) : '';
+  const cap = status === 'missed' ? `Again in a few cards, then back ${due}`
+    : status === 'unsure' ? 'Once more later in this set'
+    : `Known for today · back ${due}`;
+  box.innerHTML = `<div class="buttons"><button id="go" class="primary">Next<small>${esc(cap)}</small></button></div>`;
+  $('#go').addEventListener('click', () => { $('#go').setAttribute('disabled', ''); showNext(); });
 }
 
 /** The scheduling event for a card answered right on its first showing today. */
 async function grade(cardId: string, rating: number) {
+  await setMeta(app.db, 'pending_grade', null);
   const card = app.byId.get(cardId);
-  app.set.pending_grade = undefined;
-  if (!card) return saveAll(app.db, [], [], app.set);
+  if (!card) return;
   const prevSh = app.sh;
   if (!app.sh || app.sh.card.id !== cardId) {
     // Resuming after the app was closed before Next: grade it as Good.
@@ -490,9 +643,9 @@ function view(line: 'best' | 'ref', idx: number) {
   } else {
     setPosition(steps[idx].fenAfter, steps[idx].uci, false);
   }
-  $('#panel').querySelectorAll<HTMLElement>('.mv').forEach((b) =>
+  $('#info').querySelectorAll<HTMLElement>('.mv').forEach((b) =>
     b.classList.toggle('on', b.dataset.line === line && Number(b.dataset.i) === idx));
-  const on = $('#panel').querySelector<HTMLElement>('.mv.on');
+  const on = $('#info').querySelector<HTMLElement>('.mv.on');
   const strip = on?.parentElement;
   if (strip && on) strip.scrollLeft = on.offsetLeft - strip.offsetLeft - (strip.clientWidth - on.clientWidth) / 2;
 }
@@ -511,7 +664,7 @@ function pickPromotion(color: 'white' | 'black'): Promise<string> {
   });
 }
 
-// ---------- settings and install hint
+// ---------- settings, backup, install hint
 
 function isStandalone(): boolean {
   return matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
@@ -526,25 +679,54 @@ function showInstallHint() {
   $('#hint-x').addEventListener('click', () => { el.hidden = true; });
 }
 
+/** Extra Settings sections (sync adds one in 2.3). */
+const settingsSections: (() => Promise<string>)[] = [];
+const settingsWiring: ((dlg: HTMLDialogElement) => void)[] = [];
+
 async function openSettings() {
   const dlg = $('#settings') as HTMLDialogElement;
   const [waiting, persisted] = await Promise.all([outboxCount(app.db), navigator.storage?.persisted?.() ?? Promise.resolve(false)]);
   const started = [...app.states.keys()].filter((k) => app.byId.has(k)).length;
+  const sa = safeArea;
+  const extra = (await Promise.all(settingsSections.map((f) => f()))).join('');
   dlg.innerHTML = `
     <h2>Settings</h2>
     <dl>
       <dt>Version</dt><dd><b>${esc(APP_VERSION)}</b> (build ${esc(BUILD_ID)})</dd>
-      <dt>Review events saved on this device</dt><dd>${waiting} (sync to your other devices comes in a later milestone; these will be uploaded then)</dd>
+      <dt>Review events saved on this device</dt><dd>${waiting} not yet uploaded</dd>
       <dt>Deck</dt><dd>${app.cards.length} cards, ${started} started</dd>
-      <dt>Today's set</dt><dd>${app.set.cards.length} cards (${app.set.day})</dd>
+      <dt>Today</dt><dd>set ${app.set.round || '-'}: ${app.set.cards.length} cards (${app.today})</dd>
       <dt>Home Screen app</dt><dd>${isStandalone() ? 'yes' : 'no, running in the browser'}</dd>
       <dt>Storage</dt><dd>${persisted ? 'persistent' : 'not marked persistent (iOS may clear it if the device runs low on space)'}</dd>
       <dt>Device name</dt><dd>${esc(app.device)}</dd>
     </dl>
-    <div class="buttons"><button id="backup" class="secondary">Save a backup of my reviews</button><button id="close" class="primary">Close</button></div>`;
+    ${extra}
+    <h3>Space at the top</h3>
+    <p class="muted small">Keeps the top bar out of the blurred strip under the status bar.
+      Measured: page ${innerWidth}×${innerHeight}, screen ${screen.width}×${screen.height}, reported safe area top ${sa.envTop}px / bottom ${sa.envBottom}px${sa.full ? ', page runs under the status bar' : ''}. Using ${sa.top}px top, ${sa.bottom}px bottom.</p>
+    <div class="seg" id="topspace">
+      ${['auto', 'on', 'off'].map((m) => `<button data-m="${m}" class="${sa.mode === m ? 'on' : ''}">${m === 'auto' ? 'Automatic' : m === 'on' ? 'Always' : 'Never'}</button>`).join('')}
+    </div>
+    <h3>Backup</h3>
+    <div class="buttons">
+      <button id="backup" class="secondary">Save a backup</button>
+      <button id="restore" class="secondary">Restore from backup</button>
+    </div>
+    <input type="file" id="restore-file" accept="application/json,.json" hidden>
+    <p id="restore-msg" class="muted small"></p>
+    <div class="buttons"><button id="close" class="primary">Close</button></div>`;
   $('#close').addEventListener('click', () => dlg.close());
   $('#backup').addEventListener('click', saveBackup);
-  dlg.showModal();
+  $('#restore').addEventListener('click', () => $<HTMLInputElement>('#restore-file').click());
+  $<HTMLInputElement>('#restore-file').addEventListener('change', (e) => restoreBackup((e.target as HTMLInputElement).files?.[0]));
+  dlg.querySelectorAll<HTMLButtonElement>('#topspace button').forEach((b) => b.addEventListener('click', () => {
+    try { localStorage.setItem('topSpace', b.dataset.m!); } catch { /* ignore */ }
+    applySafeArea();
+    dlg.close();
+    openSettings();
+  }));
+  for (const w of settingsWiring) w(dlg);
+  if (!dlg.open) dlg.showModal();
 }
 
 async function saveBackup() {
@@ -562,6 +744,42 @@ async function saveBackup() {
   setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
 }
 
+/** Bring events from a saved backup back: events already here are skipped, the
+ * rest are added (and queued for upload), and the affected schedules rebuilt. */
+async function restoreBackup(file: File | undefined) {
+  const msg = $('#restore-msg');
+  if (!file) return;
+  let events: ReviewEvent[];
+  try {
+    const data = JSON.parse(await file.text());
+    events = cleanEvents(Array.isArray(data) ? data : data?.events);
+  } catch {
+    msg.textContent = 'That file is not a Chess Coach backup (not valid JSON).';
+    return;
+  }
+  if (!events.length) {
+    msg.textContent = 'No reviews found in that file.';
+    return;
+  }
+  const res = await mergeEvents(app, events, 0);
+  if (res.days.has(app.today)) {
+    app.dayEvents = await eventsForDay(app.db, app.today);
+    rederive();
+  }
+  msg.textContent = res.added
+    ? `Restored ${res.added} review event${res.added === 1 ? '' : 's'} (${res.already} were already here). ${res.cards.size} card schedule${res.cards.size === 1 ? '' : 's'} rebuilt.`
+    : `Nothing new: all ${res.already} events in that backup are already on this device.`;
+  if (res.added && (!app.sh || app.sh.done || app.sh.attempts === 0)) showNext();
+}
+
+/** For sync (2.3) and tests: hand the app's state to other modules. */
+export function appRef(): App { return app; }
+export function registerSettingsSection(render: () => Promise<string>, wire: (dlg: HTMLDialogElement) => void) {
+  settingsSections.push(render);
+  settingsWiring.push(wire);
+}
+export function onCommit(f: () => void) { afterCommit = f; }
+
 start().catch((e) => {
-  $('#panel').innerHTML = `<p class="bad">Could not start: ${esc(String(e?.message ?? e))}</p>`;
+  $('#info').innerHTML = `<p class="bad">Could not start: ${esc(String(e?.message ?? e))}</p>`;
 });

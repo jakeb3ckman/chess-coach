@@ -16,7 +16,7 @@ import chess
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from coach.build import game_link  # noqa: E402
 from coach.config import ROOT  # noqa: E402
-from coach.tags import TAG_ORDER, eval_text, hung_piece_loss  # noqa: E402
+from coach.tags import TAG_ORDER, eval_text, full_line_loss, hung_piece_loss, winning_capture_gain  # noqa: E402
 
 
 def san_line(fen: str, uci_line: str | None, first_move_number: bool = True) -> str:
@@ -44,12 +44,31 @@ def main():
     p = print
     p(f"Cards: {len(cards)}. Deep-checked moves: {len(deep)}; with a refutation line: {len(with_ref)}; "
       f"refutation score differs from the stored 'after' score: {len(mismatch)}.\n")
+    by_key0 = {(m["game_id"], m["ply"]): m for m in mistakes}
     counts = collections.Counter(t for c in cards for t in c["tags"])
     p("| tag | cards | share |\n|---|---|---|")
     for t in TAG_ORDER:
         p(f"| {t} | {counts[t]} | {100 * counts[t] / len(cards):.1f}% |")
     untagged = sum(1 for c in cards if not c["tags"])
     p(f"| (no tag) | {untagged} | {100 * untagged / len(cards):.1f}% |\n")
+    # "loses material" measures at the end of a 10-ply line, which can stop in the
+    # middle of an exchange. Count the cards where the line ends with the opponent
+    # capturing, so the possible overcount is visible.
+    lm = [c for c in cards if "loses material" in c["tags"]]
+    hung = {c["card_id"] for c in cards if "hung piece" in c["tags"]}
+    mid = 0
+    for c in lm:
+        o = c["occurrences"][0]
+        m = by_key0[(o["game_id"], o["ply"])]
+        if m["refutation_line"]:
+            b = chess.Board(m["fen_before"]); b.push_uci(m["my_move"])
+            line = m["refutation_line"].split()
+            for u in line[:-1]:
+                b.push_uci(u)
+            if b.is_capture(chess.Move.from_uci(line[-1])) and b.turn != chess.Board(m["fen_before"]).turn:
+                mid += 1
+    p(f"'loses material' cards: {len(lm)}; also 'hung piece': {sum(1 for c in lm if c['card_id'] in hung)}; "
+      f"line ends with the opponent capturing (could be mid-exchange): {mid}.\n")
 
     # Examples: the latest occurrence that carries the tag, picked deterministically.
     by_key = {(m["game_id"], m["ply"]): m for m in mistakes}
@@ -72,6 +91,10 @@ def main():
             extra = f"Win% {m['win_before']} → {m['win_after']}"
             if t == "hung piece":
                 extra += f" · material lost in the capture sequence: {hung_piece_loss(m)}"
+            if t == "missed winning capture":
+                extra += f" · the engine's capture sequence leaves me {winning_capture_gain(m)} points better off than my move's"
+            if t == "loses material":
+                extra += f" · material lost by the end of the refutation line: {full_line_loss(m)}"
             p(f"  - {extra}")
         p("")
 

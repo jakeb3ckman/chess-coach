@@ -3,7 +3,7 @@ real Stockfish output (tests/fixtures/engine); the formatting tests use bare num
 import chess
 
 from coach.build import derive_mistakes
-from coach.tags import TAG_ORDER, eval_text, hung_piece_loss, material, mate_for
+from coach.tags import TAG_ORDER, eval_text, full_line_loss, hung_piece_loss, material, mate_for, winning_capture_gain
 
 from .conftest import engine_fixture, engine_refutation
 
@@ -31,9 +31,12 @@ def test_tags_follow_their_rules(settings):
         assert ("opening" in t) == (m["move_number"] <= 10)
         assert ("thrown win" in t) == (m["win_before"] > cards["decided_high"] and m["win_after"] < cards["thrown_win_below"])
         board = chess.Board(m["fen_before"])
-        best, mine = chess.Move.from_uci(m["best_move"]), chess.Move.from_uci(m["my_move"])
-        same_target = board.is_capture(mine) and mine.to_square == best.to_square
-        assert ("missed capture" in t) == (board.is_capture(best) and not same_target)
+        gain = winning_capture_gain(m)
+        assert ("missed winning capture" in t) == (gain is not None and gain >= 3)
+        if "missed winning capture" in t:
+            assert board.is_capture(chess.Move.from_uci(m["best_move"]))
+        loss = full_line_loss(m)
+        assert ("loses material" in t) == (loss is not None and loss >= 3)
         assert ("mate" in t) == (mate_for(m["score_before"], m["my_color"]) is not None)
         if m["refutation_line"] is None:
             assert "hung piece" not in t
@@ -70,3 +73,16 @@ def test_eval_text_is_from_my_side():
     assert eval_text("M+3", "black") == "-M3"
     assert eval_text("M-2", "black") == "M2"
     assert eval_text(0, "black") == "+0.00"
+
+
+def test_full_line_loss_plays_the_whole_refutation(settings):
+    for m in _mistakes(settings):
+        if not m["refutation_line"]:
+            continue
+        board = chess.Board(m["fen_before"])
+        me = board.turn
+        start = material(board, me)
+        board.push_uci(m["my_move"])
+        for u in m["refutation_line"].split():
+            board.push_uci(u)
+        assert full_line_loss(m) == start - material(board, me)

@@ -11,7 +11,8 @@
    "color": "white",
    "prev": "c6d4",
    "tags": [
-    "opening"
+    "opening",
+    "loses material"
    ],
    "best_eval": "-1.18",
    "game": {
@@ -115,7 +116,8 @@
    "color": "black",
    "prev": "e5f7",
    "tags": [
-    "hung piece"
+    "hung piece",
+    "loses material"
    ],
    "best_eval": "-1.24",
    "game": {
@@ -147,8 +149,7 @@
    "color": "black",
    "prev": "e4e5",
    "tags": [
-    "opening",
-    "missed capture"
+    "opening"
    ],
    "best_eval": "+1.53",
    "game": {

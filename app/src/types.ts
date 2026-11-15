@@ -63,7 +63,7 @@ export interface ReviewEventV2 {
   ts: string; // ISO time
   day: string; // study day (starts 4 a.m. local), stored so replay never depends on time zone
   device: string;
-  kind: 'move' | 'hint' | 'solution' | 'mymove' | 'grade';
+  kind: 'move' | 'hint' | 'solution' | 'mymove' | 'grade' | 'set';
   showing: number; // 1 = first time this card is shown today
   attempt?: number; // move attempts within this showing, 1-based
   move_played?: string; // UCI, for kind 'move'
@@ -73,6 +73,8 @@ export interface ReviewEventV2 {
   rating?: number; // only when sched: 1 Again, 3 Good, 4 Easy ("Too easy")
   ms?: number; // time since the card appeared
   status_after?: Status;
+  round?: number; // kind 'set': which set of the day (1 = first)
+  cards?: string[]; // kind 'set': the cards it contains (card_id is '' for these events)
 }
 
 export type ReviewEvent = ReviewEventV1 | ReviewEventV2;

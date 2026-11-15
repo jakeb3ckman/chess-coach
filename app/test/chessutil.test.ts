@@ -21,7 +21,7 @@ function checkCard(c: CardsFile['cards'][number]) {
     const ref = lineSteps(after, c.game.refutation);
     assert.equal(ref.length, c.game.refutation.split(' ').length, `${c.id}: refutation line not fully legal`);
   }
-  for (const t of c.tags) assert.ok(['opening', 'mate', 'allowed mate', 'thrown win', 'missed capture', 'hung piece'].includes(t), `${c.id}: unknown tag ${t}`);
+  for (const t of c.tags) assert.ok(['opening', 'mate', 'allowed mate', 'thrown win', 'missed winning capture', 'hung piece', 'loses material'].includes(t), `${c.id}: unknown tag ${t}`);
   assert.match(c.best_eval, /^(-?M\d+|[+-]\d+\.\d\d)$/);
   assert.match(c.game.eval, /^(-?M\d+|[+-]\d+\.\d\d)$/);
   if (c.prev) {

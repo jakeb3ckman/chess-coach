@@ -11,6 +11,11 @@
   --accent: #629924;
   --bar-h: 48px;
   --banner-h: 46px;
+  /* Set by main.ts: the reported safe areas, or a fallback when iOS draws its
+     frosted status-bar strip over the page but reports 0 (WebKit bug 301994). */
+  --top-pad: env(safe-area-inset-top);
+  --bottom-pad: env(safe-area-inset-bottom);
+  --board-shrink: 0px; /* main.ts shrinks the board after an answer if the lines don't fit */
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -23,8 +28,9 @@ html, body {
 #app {
   display: flex; flex-direction: column; height: 100dvh; width: 100%;
   max-width: 720px; margin: 0 auto;
-  /* Safe areas (notch, home indicator, rounded corners) in the Home Screen app. */
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  /* Safe areas (notch, home indicator, rounded corners) in the Home Screen app.
+     The bottom one is applied by #actions so the button sits just above the home indicator. */
+  padding: var(--top-pad) env(safe-area-inset-right) 0 env(safe-area-inset-left);
 }
 #bar {
   height: var(--bar-h); flex: none; display: flex; align-items: center; justify-content: space-between;
@@ -47,7 +53,8 @@ html, body {
 #board-wrap { flex: none; width: 100%; display: flex; justify-content: center; }
 #board {
   /* 100% = the content width of #app, so the board can never stick out. */
-  width: min(100%, calc(100dvh - var(--bar-h) - var(--banner-h) - 200px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 640px);
+  width: calc(min(100%, calc(100dvh - var(--bar-h) - var(--banner-h) - 230px - var(--top-pad) - var(--bottom-pad)), 640px) - var(--board-shrink));
+  transition: width .15s;
   aspect-ratio: 1; touch-action: none; position: relative;
 }
 #banner {
@@ -58,19 +65,22 @@ html, body {
 #banner.wrong, #banner.revealed { background: var(--bad); color: #fff; }
 #banner.done { background: var(--ok); color: #fff; }
 #banner .sub { font-weight: 400; font-size: 14px; opacity: .9; margin-left: 4px; }
-#panel {
-  flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
-  padding: 10px 14px calc(16px + env(safe-area-inset-bottom));
-}
-#panel p { margin: 0 0 8px; }
+/* Everything between the banner and the bottom button is the info area; the
+   button area is pinned to the bottom, just above the home indicator. */
+#panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+#info { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8px 14px 4px; }
+#actions { flex: none; padding: 6px 14px calc(8px + var(--bottom-pad)); }
+#actions:empty { display: none; }
+#actions .buttons { margin-top: 0; }
+#panel p { margin: 0 0 6px; }
 .big { font-size: 18px; font-weight: 600; }
 .muted { color: var(--muted); font-size: 14px; }
 .small { font-size: 13px; }
 .bad { color: #ef6b61; }
-.row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 6px; }
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 4px; }
 .row .what { min-width: 0; }
 .row .ev { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; }
-.moves { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding: 4px 0 6px; min-width: 0; }
+.moves { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding: 3px 0 5px; min-width: 0; }
 .moves::-webkit-scrollbar { display: none; }
 .mv {
   flex: none; background: var(--panel); color: var(--text); border: 1px solid #444; border-radius: 6px;
@@ -93,7 +103,17 @@ html, body {
 .primary { background: var(--accent); color: #fff; }
 .secondary { background: var(--panel); color: var(--text); border: 1px solid #555 !important; }
 button[disabled] { opacity: .5; }
-.later { text-align: center; margin-top: 14px !important; }
+.later { text-align: center; margin: 2px 0 0 !important; }
+.later .link { padding: 6px 10px; }
+.forecast { margin-top: 10px; padding: 10px 12px; background: var(--panel); border-radius: 10px; }
+.seg { display: flex; gap: 0; margin: 6px 0 4px; }
+.seg button { flex: 1; height: 36px; background: var(--bg); color: var(--text); border: 1px solid #555; font: inherit; font-size: 14px; }
+.seg button:first-child { border-radius: 8px 0 0 8px; }
+.seg button:last-child { border-radius: 0 8px 8px 0; }
+.seg button.on { background: var(--accent); border-color: var(--accent); }
+dialog h3 { font-size: 15px; margin: 14px 0 4px; }
+dialog input[type=text], dialog input[type=password] { width: 100%; height: 38px; border-radius: 8px; border: 1px solid #555; background: var(--bg); color: var(--text); padding: 0 10px; font: inherit; font-size: 15px; }
+#syncmsg { flex: none; margin: 0 8px 6px; padding: 8px 12px; background: #5a2420; border-radius: 8px; font-size: 14px; cursor: pointer; }
 .link { background: none; border: 0; color: #8fb3e0; font: inherit; font-size: 15px; padding: 10px; }
 #promo { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 10; }
 #promo[hidden] { display: none; }
@@ -109,10 +129,11 @@ dialog dd { margin: 2px 0 0; }
    the board (left: 24px; width: 100%) and the rank numbers 20px above it. That made
    the page 24px wider than the screen. Keep both inside the board. */
 cg-board square.last-move { background-color: rgba(155, 199, 0, .41); }
-.cg-wrap coords { font-size: 10px; opacity: .9; }
-.cg-wrap coords.files { left: 0; bottom: 0; width: 100%; height: auto; }
+/* Small lowercase file letters tucked into the bottom-right corner of the bottom
+   row's squares, like the rank numbers in the top-left corner of the left file. */
+.cg-wrap coords { font-size: 9px; line-height: 1; opacity: .85; font-weight: 600; }
+.cg-wrap coords.files { left: 0; bottom: 0; width: 100%; height: auto; text-transform: lowercase; }
 .cg-wrap coords.files coord { text-align: right; padding: 0 2px 1px 0; }
 .cg-wrap coords.ranks { left: 0; top: 0; height: 100%; width: auto; }
-.cg-wrap coords.ranks coord { transform: none; padding: 1px 0 0 2px; }
-/* Grading buttons stay visible at the bottom of the panel while the lines scroll. */
-#grade { position: sticky; bottom: calc(-16px - env(safe-area-inset-bottom)); background: var(--bg); padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); margin-bottom: calc(-16px - env(safe-area-inset-bottom)); }
+.cg-wrap coords.ranks coord { transform: none; padding: 2px 0 0 2px; }
+dialog { max-height: calc(100dvh - 40px); overflow-y: auto; }

@@ -52,15 +52,61 @@ def is_thrown_win(m: dict, cards: dict) -> bool:
     return m["win_before"] > cards["decided_high"] and m["win_after"] < cards["thrown_win_below"]
 
 
-def is_missed_capture(m: dict) -> bool:
-    """The engine's best move captures, and my move did not capture on that same
-    square (taking the right piece with the wrong piece is not a missed capture)."""
+def _after_captures(board: chess.Board, line: list[str], me: bool, start_index: int = 0) -> int:
+    """Play `line` from start_index while every move is a capture (at most
+    HUNG_MAX_PLIES plies) and return my material balance at the end."""
+    for u in line[start_index:start_index + HUNG_MAX_PLIES]:
+        mv = chess.Move.from_uci(u)
+        if not board.is_capture(mv):
+            break
+        board.push(mv)
+    return material(board, me)
+
+
+def winning_capture_gain(m: dict) -> int | None:
+    """How much better the engine's capture sequence leaves me than my game move's.
+
+    Best side: from the card position, play the engine's best line for as long as
+    every move is a capture (the best move itself must be a capture).
+    Game side: from the card position, play my game move, then Stockfish's
+    refutation line for as long as every move is a capture.
+    Returns (my material after best side) - (my material after game side), or None
+    if the best move is not a capture or there is no refutation line."""
+    line = (m.get("best_line") or "").split()
+    ref = (m.get("refutation_line") or "").split()
     board = chess.Board(m["fen_before"])
-    best = chess.Move.from_uci(m["best_move"])
-    mine = chess.Move.from_uci(m["my_move"])
-    if not board.is_capture(best):
-        return False
-    return not (board.is_capture(mine) and mine.to_square == best.to_square)
+    me = board.turn
+    if not line or not board.is_capture(chess.Move.from_uci(line[0])) or m.get("refutation_line") is None:
+        return None
+    best = _after_captures(board.copy(), line, me)
+    game_board = board.copy()
+    game_board.push_uci(m["my_move"])
+    game = _after_captures(game_board, ref, me)
+    return best - game
+
+
+def is_missed_winning_capture(m: dict) -> bool:
+    gain = winning_capture_gain(m)
+    return gain is not None and gain >= HUNG_MIN_LOSS
+
+
+def full_line_loss(m: dict) -> int | None:
+    """Material I lose from the card position to the end of the stored refutation
+    line (my game move, then every move of the line), or None without a line."""
+    if m.get("refutation_line") is None:
+        return None
+    board = chess.Board(m["fen_before"])
+    me = board.turn
+    start = material(board, me)
+    board.push_uci(m["my_move"])
+    for u in m["refutation_line"].split():
+        board.push_uci(u)
+    return start - material(board, me)
+
+
+def is_loses_material(m: dict) -> bool:
+    loss = full_line_loss(m)
+    return loss is not None and loss >= HUNG_MIN_LOSS
 
 
 def hung_piece_loss(m: dict) -> int | None:
@@ -94,7 +140,7 @@ def is_hung_piece(m: dict) -> bool:
     return loss is not None and loss >= HUNG_MIN_LOSS
 
 
-TAG_ORDER = ["opening", "mate", "allowed mate", "thrown win", "missed capture", "hung piece"]
+TAG_ORDER = ["opening", "mate", "allowed mate", "thrown win", "missed winning capture", "hung piece", "loses material"]
 
 
 def tags_for(m: dict, cards: dict) -> list[str]:
@@ -103,8 +149,9 @@ def tags_for(m: dict, cards: dict) -> list[str]:
         "mate": is_mate(m),
         "allowed mate": is_allowed_mate(m),
         "thrown win": is_thrown_win(m, cards),
-        "missed capture": is_missed_capture(m),
+        "missed winning capture": is_missed_winning_capture(m),
         "hung piece": is_hung_piece(m),
+        "loses material": is_loses_material(m),
     }
     return [t for t in TAG_ORDER if checks[t]]
 
