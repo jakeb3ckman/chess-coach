@@ -1,5 +1,5 @@
 # Nightly: import new games, analyze them with Stockfish in 4 parallel shards,
-# then rebuild cards. Resumable: each shard commits every 20 games and stops
+# run the position pass on repeated opening positions, then rebuild cards. Resumable: each shard commits every 20 games and stops
 # starting new games after 5 hours; if games are still waiting, the workflow
 # starts itself again. Only one run at a time (concurrency group).
 name: pipeline
@@ -70,6 +70,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           uv run python -m coach analyze --shard ${{ matrix.shard }}/4 --workers "$(nproc)" --commit
+      - name: Position pass, shard ${{ matrix.shard }} of 4 (repeated opening positions, write-once)
+        run: |
+          uv run python -m coach positions --shard ${{ matrix.shard }}/4 --workers "$(nproc)" --commit --budget-minutes 30
 
   build:
     needs: analyze

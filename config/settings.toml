@@ -39,3 +39,29 @@ new_per_day = 10
 [analysis_jobs]
 batch_games = 20            # commit after this many finished games
 budget_minutes = 300        # stop starting new games after this long (GitHub's job limit is 360)
+
+[positions]                 # the position pass (Phase 3): deep multi-line search of repeated opening positions
+min_games = 3               # position reached in at least this many of my games
+max_ply = 30                # within my first 15 moves
+nodes = 5000000             # per search, 1 thread, hash cleared
+multipv = 5
+min_played_for_extra = 2    # also search each move I played this often that isn't in the top 5
+pv_max_plies = 10
+commit_every = 100          # searches per commit
+
+[openings]
+group_min_games = 10        # a variation needs this many games to be its own row
+tree_min_games = 3          # positions shown in the move tree
+engine_top_min_games = 10   # show the engine's top 3 where a position was reached this often
+leak_min_drop = 5.0         # Win% lost: a leak (report)
+leak_error_drop = 10.0      # Win% lost: an error (leak card); below = repertoire choice
+right_within = 2.0          # leak cards: a move within this many Win% of the best is right
+playable_within = 5.0       # ... within this many: "playable, but there's better"
+leak_cards_per_day = 3      # at most this many new leak cards a day (inside the 10 new)
+alt_min_games = 5           # Openings screen: a better-scoring alternative needs this many games
+trend_min_games = 60        # rating-adjusted score over time for groups with this many games
+trend_block = 30            # ... in blocks of this many games
+
+[insights]
+timezone = "America/New_York"
+session_gap_min = 15

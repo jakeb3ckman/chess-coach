@@ -7,6 +7,7 @@ import os
 import platform
 import subprocess
 import sys
+import time
 from importlib import metadata
 
 from .build import build_all
@@ -14,6 +15,7 @@ from .config import load_settings
 from .engine import engine_path
 from .http import HttpClient
 from .importers import import_chesscom, import_lichess
+from .positions import pending_work, run_positions
 from .runner import pending_games, run_analysis
 from .store import Store
 
@@ -51,7 +53,13 @@ def main(argv=None):
     a.add_argument("--no-push", action="store_true")
     b = sub.add_parser("build", help="derive mistakes and cards")
     b.add_argument("--app-out", help="also write the app's card file here")
-    sub.add_parser("pending", help="print how many games still need analysis")
+    q = sub.add_parser("positions", help="run the position pass on repeated opening positions")
+    q.add_argument("--shard", default="0/1")
+    q.add_argument("--workers", type=int, default=os.cpu_count() or 1)
+    q.add_argument("--budget-minutes", type=float, default=120)
+    q.add_argument("--commit", action="store_true")
+    q.add_argument("--no-push", action="store_true")
+    sub.add_parser("pending", help="print how many games and position searches are still waiting")
     sub.add_parser("versions", help="print installed versions")
     args = p.parse_args(argv)
 
@@ -70,10 +78,20 @@ def main(argv=None):
         print(json.dumps(res, indent=1))
         if res["failed"]:
             sys.exit(1)
+    elif args.cmd == "positions":
+        i, n = (int(x) for x in args.shard.split("/"))
+        deadline = time.monotonic() + args.budget_minutes * 60
+        # Extra moves need their position's top-5 file first, so repeat until done or out of time.
+        while True:
+            res = run_positions(store, settings, shard=i, shards=n, workers=args.workers, deadline=deadline,
+                                commit=args.commit, push=not args.no_push)
+            print(json.dumps(res, indent=1))
+            if not res["remaining"] or not res["searches"] or time.monotonic() >= deadline:
+                break
     elif args.cmd == "build":
         print(json.dumps(build_all(store, settings, app_out=args.app_out), indent=1))
     elif args.cmd == "pending":
-        print(len(pending_games(store)))
+        print(len(pending_games(store)) + len(pending_work(store, settings)))
     elif args.cmd == "versions":
         print(json.dumps(versions(), indent=1))
 

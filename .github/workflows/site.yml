@@ -6,7 +6,7 @@ name: site
 on:
   push:
     branches: [main]
-    paths: ["app/**", "coach/build.py", "coach/classify.py", "config/**", ".github/workflows/site.yml"]
+    paths: ["app/**", "coach/**", "config/**", ".github/workflows/site.yml"]
   workflow_dispatch:
   workflow_call:
 
