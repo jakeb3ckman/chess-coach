@@ -1,0 +1,1 @@
+{"format":1,"epd":"rn1qkbnr/pp1Bpppp/8/3p4/3P4/8/PPP2PPP/RNBQK1NR b KQkq -","engine":{"name":"Stockfish 19","threads":1,"hash_mb":16,"nodes":5000000,"multipv":5},"lines":[[-2,25,"b8d7 g1e2"],[-3,24,"d8d7 g1e2 e7e6 e1g1 b8c6 c2c3 f8d6 c1f4 g8e7 f4d6"],[90,24,"e8d7 c2c4 d5c4 d1f3 d7e8 f3b7 b8d7 g1f3 e7e6 e1g1"]],"secs":5.63}
