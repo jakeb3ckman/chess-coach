@@ -1,6 +1,6 @@
 # Personal Chess Coach — Spec (v1, for review)
 
-Status: approved 2026-11-13 with the changes in section 8.
+Status: approved 2026-11-13 with the changes in section 8; Phase 3 sections added 2026-11-15.
 
 ## 1. What I checked before writing this
 
@@ -73,6 +73,8 @@ Scores are raw engine output (`cp` or `mate`, White's view).
 
 **Refutations** (`data/refutations/...json`, added in the Phase 2 rework, written once): for every deep-checked move of mine, Stockfish's line for the opponent from the position after my move (`after: {ply: [score, depth, pv]}`). It repeats pass 2's "after" search exactly (2M nodes, same move history, hash cleared), so its score must equal the stored `p2` "after" score; the build records any mismatch. Analysis files are never rewritten: games analyzed before this existed only get the new file. New games get both files from the same job.
 
+**Positions** (`data/positions/{h[:2]}/{h}.json`, added in Phase 3, written once): the position pass. For every position where I am to move, within my first 15 moves, reached in at least 3 of my games: Stockfish 19, 1 thread, 16 MB hash cleared, **MultiPV 5 at 5,000,000 nodes**, searched from the position's own FEN. Plus `{h}-{uci}.json` for each move I played there at least twice that is not in the top 5 (a search restricted to that move, same budget). `h` = sha1 of the EPD. Code: `coach/positions.py`. Runs as a step of each nightly analysis shard.
+
 **Mistake** (derived, rebuilt every run): `game_id`, `ply`, `fen_before`, `my_move`, `best_move`, `best_line`, `win_before`, `win_after`, `drop`, `category`, `second_best_gap`, `clock_before_s`, `time_spent_s`, `time_class`, `source_pass`, `card_status` (eligible, or the rule that excluded it).
 
 **Card** (derived): `card_id` (hash of normalized position + solution move), `fen`, `solution_uci`, `engine_line`, `deck` (`tactics` | `opening`), `occurrences[]` (mistake refs), `created_at`.
@@ -131,6 +133,15 @@ The tag applies if my material after the best side is **at least 3 points higher
 
 So `hung piece` means "the engine's reply to my move takes a piece, and the capture sequence that follows leaves me down at least a minor piece". It includes moving a piece to an attacked square, leaving a piece undefended, and failing to save a piece that was already attacked. It does not include forks, pins or mating attacks whose first move isn't a capture (no material changes on the first move), or exchanges where I get the material back within the sequence. If a card has no refutation line yet, it gets no `hung piece` tag.
 
+### 4.2 Opening leaks and leak cards (Phase 3)
+
+Code: `coach/openings.py`; settings `[openings]` in `config/settings.toml`.
+- **Leak:** a position (pieces, side to move, castling, legal en passant) where I am to move, within my first 15 moves, reached in ≥3 of my games; a move I played there ≥2 times that loses **≥5 Win%** against the best move, both scored by the position pass; Win% before between 10 and 90. Ranked by Win% lost × times played.
+- **Repertoire choice:** a leak losing 5 to under 10 Win%. Reported with my results with that move next to my results with the engine's move. No card.
+- **Error:** a leak losing **≥10 Win%**. Becomes a leak card (deck `opening`), one card per position covering every error move I played there, unless a tactics card already covers the position, or 5 searched moves are all within 2 Win% of the best (then the list of right answers may be incomplete).
+- **Leak card answers:** right = any move within **2 Win%** of the best (all such moves are among the 5 searched lines, because the 5th is more than 2 behind); 2 to 5 Win% behind = "Playable, but there's better", counts as wrong; one of my error moves = habit; anything else = wrong. At most **3 new leak cards a day**, inside the 10 new cards. Scheduling and the review event format are unchanged.
+- **Opening names:** Lichess's CC0 table (`config/chess-openings/`), last table position within the first 40 half-moves, matched by position. Groups: the variation (name before the first ",") when it has ≥10 games for that colour, else "Family (other lines)".
+
 ## 5. Analysis depth and first-import time
 
 - **Pass 1, every position:** Stockfish, 1 thread, fixed **200,000 nodes**. Fixed nodes on one thread keeps results repeatable on any machine.
@@ -165,7 +176,7 @@ Ongoing at your current pace (~850 games/month) is roughly a quarter of that per
 
 ### 6.1 Trainer (milestones 2.1 and 2.2, local only; reworked 2026-11-14)
 
-- **The board is the whole screen.** It is as wide as the screen's content area (never wider), with the safe-area insets of the Home Screen app applied, and the **same size in every state**: the screen height minus what the answer screen needs (344 px) decides it, so it is full width on every current iPhone. Everything sits in one column as wide as the board (centred on a Mac); text has 16 px side margins, the board runs edge to edge. Nothing on the page scrolls sideways. The top strip holds only the settings gear. Directly under the board: the four set counts as coloured tiles (full tiles while a card is asked, one thin row on the answer screen). Below them: a banner and a short panel.
+- **The board is the whole screen.** It is as wide as the screen's content area (never wider), with the safe-area insets of the Home Screen app applied, and the **same size in every state**: the screen height minus what the answer screen needs (344 px) decides it, so it is full width on every current iPhone. Everything sits in one column as wide as the board (centred on a Mac); text has 16 px side margins, the board runs edge to edge. Nothing on the page scrolls sideways. The top strip stays empty (2.4.0: the gear became the Menu tile). Directly under the board: the four set counts as coloured tiles, plus the Menu tile, (full tiles while a card is asked, one thin row on the answer screen). Below them: a banner and a short panel.
 - **Moving with a thumb:** tap a piece, then tap the target square (legal targets are marked), or drag. Touches never scroll the page. Promotion shows a four-piece picker.
 - **Each card:** the position before my move, my side at the bottom, the opponent's previous move highlighted.
 - **The day's set** (in the style of Lotus Chess): when the app first opens on a study day it fixes that day's set: every card due before the day ends, plus new cards in the approved order up to 10 a day. The set is finished only when every card in it is Known.
@@ -211,6 +222,14 @@ Ongoing at your current pace (~850 games/month) is roughly a quarter of that per
 **The token:** a fine-grained personal access token for that one repository, with "Contents: Read and write" only. It is entered in the app's own Settings, in the installed Home Screen app on the iPhone (whose storage is separate from Safari) and in the app on the Mac. One token per device, so revoking one doesn't stop the other. It is stored only in that app's on-device storage, never in a URL. Settings shows the last 4 characters, has "Sync now" and "Remove token".
 
 **Opening stays fast:** opening reads each card's stored schedule and today's events (by index), never the whole log; sync runs after the first card is on screen and downloads only changed files. Measured with a simulated year (about 4,000 reviews, 2,530 schedules, 14 monthly files): first card on screen in about 75 ms on the Mac; a normal reopen makes 2 requests (repository, file list). Not yet measured on the iPhone.
+
+### 6.3 Openings and Insights (Phase 3, version 2.4.0)
+
+- **Navigation:** a **Menu** tile at the end of the counts row opens Train / Openings / Insights / Settings. The top strip under the status bar stays empty. Dialogs and pages open below it and scroll inside their own box.
+- **Data:** `data/openings.json` and `data/insights.json`, built nightly from stored games and Stockfish output (games are public on both sites). Review data never goes into them.
+- **Openings:** repertoire per colour with time-control filters. For groups with ≥60 games: score minus rating-expected score (Elo formula on the stored ratings) in blocks of 30 games, oldest first, with 95% intervals. Opponents' replies (positions with the opponent to move in the first 8 half-moves, reached ≥20 times). Opening errors and repertoire choices (4.2). A move tree of positions reached ≥3 times in my first 15 moves: my results after each move; Stockfish's top 3 where reached ≥10 times. Where I've played them at least 5 times each: my usual move side by side with the best-scoring other move and with the engine's move.
+- **Insights:** each line = the statistic, the sample behind it, and a canned tip in a separate box labelled as general advice. Shown only with ≥50 games, ≥500 moves or ≥30 events behind it. Comparisons are shown only when the 95% interval of the difference excludes zero; move-level intervals come from resampling whole games. Lines that fail are listed under "Checked, no clear pattern". Blunder rates count positions with Win% before between 10 and 90. Session = games where each starts ≤15 minutes after the previous ended (start = end − clock time used). Time zone America/New_York.
+- **Training lines** are computed on the device from its own review log: first-try rate by week (shown from 100 first answers over 14 study days), most repeated habits (shown when 5 cards have ≥2 habit showings).
 
 ## 7. Milestones
 
@@ -271,6 +290,16 @@ The Phase 1 backfill started on this Mac (765 games) and was finished by the Git
 6. "Too easy" replaces "Easy"; both buttons show the real return date.
 7. Layout: board fits the screen exactly; status bar style `black`; version number in Settings; updates reach the installed app.
 8. Not in this rework: sync, multi-move puzzles, the opening report, an insights page. Their data is kept (every showing event, habit flags, timings, refutation lines).
+
+### Phase 3 decisions (approved 2026-11-15)
+
+1. Opening grouping by variation with ≥10 games, else pooled by family.
+2. Leak rule at 5 Win%, split: 5–10 = repertoire choice (no card), ≥10 = error (leak card), applied after the position pass re-measures.
+3. Position pass: write-once, MultiPV 5 at 5M nodes, positions reached ≥3 times.
+4. Leak cards: right within 2 Win%, at most 3 new a day.
+5. Insights: 5 lines; missed gifts shown as kept / partly given back / given back, without a comparison to other moves; speed dropped; tilt, game number and time of day checked and hidden while unclear; training on the device.
+6. Menu tile, dialogs below the top strip, "Back in 2 days" captions, no half line above the buttons.
+7. Score against rating over time for openings with ≥60 games, blocks of 30.
 
 ## 9. Risks and unknowns
 
