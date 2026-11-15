@@ -6,7 +6,7 @@ my real mistakes into spaced-repetition puzzles.
 
 - Design: [docs/spec.md](docs/spec.md)
 - Phase 1 results: [docs/phase-1-report.md](docs/phase-1-report.md)
-- Phase 2 notes: [docs/phase-2-notes.md](docs/phase-2-notes.md), rework: [docs/phase-2-rework-notes.md](docs/phase-2-rework-notes.md)
+- Phase 2 notes: [docs/phase-2-notes.md](docs/phase-2-notes.md), rework: [docs/phase-2-rework-notes.md](docs/phase-2-rework-notes.md), sync: [docs/phase-2-sync-notes.md](docs/phase-2-sync-notes.md)
 - Trainer app: https://jakeb3ckman.github.io/chess-coach/
 - License: GPL-3.0 ([LICENSE](LICENSE))
 
