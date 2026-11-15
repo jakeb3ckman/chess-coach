@@ -203,3 +203,6 @@ button.item { cursor: pointer; }
 .tip .tl { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #8fb3e0; margin-bottom: 2px; }
 details.checked summary { cursor: pointer; color: var(--muted); padding: 8px 0; }
 .trend { width: 100%; height: auto; display: block; margin: 6px 0; }
+.item.prog .sub { margin-top: 4px; }
+.pl { border-top: 1px solid #444; margin-top: 8px; padding-top: 6px; font-size: 14px; }
+.item.prog details summary { cursor: pointer; padding: 6px 0 0; }

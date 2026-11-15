@@ -15,7 +15,13 @@ type Color = 'white' | 'black';
 type TC = 'all' | 'bullet' | 'blitz' | 'rapid';
 interface Rec { n: number; w: number; d: number; l: number; score: number | null }
 interface Trend { from: string; to: string; games: number; score: number; expected: number; diff: number; lo: number; hi: number }
-interface Group extends Rec { name: string; family: string; tc: Record<'bullet' | 'blitz' | 'rapid', Rec>; node: string | null; eco: string | null; trend?: Trend[] }
+interface Period { n: number; good: number; old: number; other: number; unchecked: number }
+interface Blund { blunders: number; moves: number; games: number }
+interface ProgLeak { node: string; path: string; kinds: string[]; old: string[]; good: string[]; good_complete: boolean; before: Period; since: Period }
+interface Group extends Rec {
+  name: string; family: string; tc: Record<'bullet' | 'blitz' | 'rapid', Rec>; node: string | null; eco: string | null; trend?: Trend[];
+  progress?: { blunders: { before: Blund; since: Blund }; leaks: ProgLeak[] };
+}
 interface NodeMove extends Rec { u: string; s: string; to: string | null; behind?: number }
 interface TreeNode {
   fen: string; color: Color; me: boolean; games: number; path: string; name: string | null; moves: NodeMove[];
@@ -31,6 +37,7 @@ interface Leak {
 interface OpeningsFile {
   format: number; games: number; groups: Record<Color, Group[]>; replies: Reply[]; leaks: Leak[];
   nodes: Record<string, TreeNode>; start: Record<Color, string>;
+  progress?: { start: string; min_games_since: number; right_within: number };
   rules: { leak_min_drop: number; leak_error_drop: number; right_within: number; group_min_games: number; trend_block: number };
 }
 interface InsightLine { id: string; title: string; stat: string; sample: string; detail?: string; status: 'shown' | 'checked'; tip: string | null }
@@ -41,6 +48,8 @@ export interface PageCtx { db: IDBDatabase; byId: Map<string, AppCard>; onClose:
 let ctx: PageCtx;
 let back: (() => void)[] = [];
 let openings: OpeningsFile | null = null;
+type CardStatus = 'known' | 'unsure' | 'missed';
+let cardStatus = new Map<string, CardStatus>(); // from this device's reviews; never leaves the device
 const ui = { color: 'white' as Color, tc: 'all' as TC };
 
 async function load<T>(path: string): Promise<T> {
@@ -100,7 +109,83 @@ async function showOpenings() {
     frame('Openings', '<p>The openings file isn’t available offline yet. Open this screen once while online.</p>');
     return;
   }
+  cardStatus = await statusesFromLog();
   renderOpenings();
+}
+
+/** Each card's status after its latest showing, from this device's review log. */
+async function statusesFromLog(): Promise<Map<string, CardStatus>> {
+  const out = new Map<string, CardStatus>();
+  const latest = new Map<string, string>();
+  for (const e of await allEvents(ctx.db)) {
+    const st: CardStatus | undefined = e.v === 2
+      ? (e.status_after === 'remaining' ? undefined : e.status_after)
+      : (e.correct ? 'known' : 'missed');
+    if (!st || !e.card_id) continue;
+    if ((latest.get(e.card_id) ?? '') <= e.ts) { latest.set(e.card_id, e.ts); out.set(e.card_id, st); }
+  }
+  return out;
+}
+
+const per100 = (b: Blund) => (b.moves ? (100 * b.blunders / b.moves).toFixed(1) : '–');
+const plural = (n: number, w: string) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`;
+
+function progressHtml(c: Color): string {
+  const o = openings!;
+  const pr = o.progress;
+  if (!pr) return '';
+  const min = pr.min_games_since;
+  const counts = new Map<string, Record<CardStatus | 'unseen', number>>();
+  for (const card of ctx.byId.values()) {
+    if (card.color !== c || !card.opening) continue;
+    const k = counts.get(card.opening) ?? { known: 0, unsure: 0, missed: 0, unseen: 0 };
+    k[cardStatus.get(card.id) ?? 'unseen']++;
+    counts.set(card.opening, k);
+  }
+  const groups = o.groups[c].filter((g) => g.progress && g.n >= o.rules.group_min_games);
+  const sinceGames = (g: Group) => g.progress!.blunders.since.games;
+  groups.sort((a, b) => sinceGames(b) - sinceGames(a) || b.n - a.n);
+  const period = (p: Period, label: string, enough: boolean) => p.n
+    ? `${label}: good move ${p.good}, old move ${p.old}, other ${p.other}${p.unchecked ? `, not checked ${p.unchecked}` : ''} of ${plural(p.n, 'game')}`
+      + (enough ? ` (${Math.round(100 * p.good / p.n)}% good)` : '')
+    : `${label}: not reached`;
+  const groupCard = (g: Group) => {
+    const pg = g.progress!;
+    const b = pg.blunders;
+    const enoughB = b.since.games >= min;
+    const k = counts.get(g.name) ?? { known: 0, unsure: 0, missed: 0, unseen: 0 };
+    const nCards = k.known + k.unsure + k.missed + k.unseen;
+    const leaks = pg.leaks;
+    const leakRow = (l: ProgLeak) => {
+      const enough = l.since.n >= min;
+      return `<div class="pl">
+        <div><b>${esc(l.path || 'Start')}</b> <span class="badge ${l.kinds.includes('error') ? 'err' : 'rep'}">${l.kinds.includes('error') ? 'error' : 'repertoire choice'}</span></div>
+        <div class="sub">Good: ${l.good.map(esc).join(', ')}${l.good_complete ? '' : ' (and possibly others not checked)'} · old: ${l.old.map(esc).join(', ')}</div>
+        <div class="sub">${period(l.before, 'Before', l.before.n >= min)}</div>
+        <div class="sub">${period(l.since, 'Since', enough)}${l.since.n && !enough ? ' · not enough games yet' : ''}</div>
+      </div>`;
+    };
+    const reached = leaks.filter((l) => l.since.n > 0);
+    const rest = leaks.filter((l) => l.since.n === 0);
+    return `<div class="item prog">
+      <div class="top"><span class="name">${esc(g.name)}</span><span class="num">${plural(b.since.games, 'game')} since</span></div>
+      <div class="sub"><b>Blunders per 100 moves</b> in your first 15 moves: before ${per100(b.before)} (${b.before.blunders} in ${plural(b.before.moves, 'move')}, ${plural(b.before.games, 'game')}) ·
+        since ${per100(b.since)} (${b.since.blunders} in ${plural(b.since.moves, 'move')}, ${plural(b.since.games, 'game')})${enoughB ? '' : ' · not enough games yet'}</div>
+      <div class="sub"><b>Cards</b>${nCards ? `: Known ${k.known} · Unsure ${k.unsure} · Missed ${k.missed} · not yet seen ${k.unseen}` : ': none from this opening'}</div>
+      ${reached.map(leakRow).join('')}
+      ${rest.length ? `<details><summary class="sub">${plural(rest.length, 'leak position')} not reached since ${pr.start}</summary>${rest.map(leakRow).join('')}</details>` : ''}
+    </div>`;
+  };
+  const active = groups.filter((g) => sinceGames(g) > 0);
+  const idle = groups.filter((g) => sinceGames(g) === 0);
+  return `
+    <h3>Progress since ${pr.start}</h3>
+    <p class="muted small">Your training start date (a setting). Games ending on or after it count as "since".
+      A good move is within ${pr.right_within} Win% of Stockfish's best (position pass); "old move" is your leak move there.
+      Comparisons resting on fewer than ${min} games since the start say "not enough games yet"; the counts are always shown.
+      All time controls. Card statuses are your latest result on each card, counted on this device from your reviews and never published.</p>
+    <div class="list">${active.map(groupCard).join('') || '<p class="muted">No games in your groups since the start date yet.</p>'}</div>
+    ${idle.length ? `<details class="checked"><summary>${plural(idle.length, 'opening')} with no games since ${pr.start}</summary><div class="list">${idle.map(groupCard).join('')}</div></details>` : ''}`;
 }
 
 function renderOpenings() {
@@ -122,6 +207,7 @@ function renderOpenings() {
   frame('Openings', `
     ${seg('o-color', [['white', 'As White'], ['black', 'As Black']], c)}
     ${seg('o-tc', [['all', 'All'], ['bullet', 'Bullet'], ['blitz', 'Blitz'], ['rapid', 'Rapid']], ui.tc, true)}
+    ${progressHtml(c)}
     <h3>Repertoire</h3>
     <p class="muted small">Grouped by variation (${o.rules.group_min_games}+ games), smaller lines pooled under their family. Score = (wins + ½ draws) / games.</p>
     <div class="list">${rows.map(({ g, r }, i) => `

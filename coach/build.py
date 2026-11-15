@@ -199,6 +199,11 @@ def build_all(store: Store, settings: dict, app_out=None) -> dict:
     Store.write_json_atomic(store.derived / "insights.json", insights)
     if app_out is not None:
         app = app_cards(cards)
+        # Each card carries the opening group of the game it came from (latest
+        # occurrence), so the app can count card statuses per opening.
+        group_of = {g["id"]: g.get("_group") for g in analyzed}
+        for c, ac in zip(cards, app["cards"]):
+            ac["opening"] = group_of.get(c["occurrences"][0]["game_id"])
         app["cards"] = leak_cards + app["cards"]  # leak cards first; the app takes at most 3 new ones a day
         app["opening_rules"] = {k: settings["openings"][k] for k in ("right_within", "playable_within", "leak_cards_per_day")}
         Store.write_json_atomic(Path(app_out), app)

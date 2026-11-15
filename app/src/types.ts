@@ -34,6 +34,7 @@ export interface AppCard {
   // Leak cards only (deck 'opening', Phase 3): moves within right_within Win% of the
   // best (best first), and every move the position pass searched, with Win% behind best.
   right?: string[];
+  opening?: string | null; // opening group of the game the card came from (Phase 3 Progress)
   alts?: { u: string; behind: number; eval: string }[];
 }
 

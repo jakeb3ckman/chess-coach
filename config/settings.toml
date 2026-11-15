@@ -65,3 +65,7 @@ trend_block = 30            # ... in blocks of this many games
 [insights]
 timezone = "America/New_York"
 session_gap_min = 15
+
+[progress]                  # the Progress section of the Openings screen
+training_start = "2026-11-14"   # games from this date on (local time) count as "since"
+min_games_since = 10        # fewer games since the start: "not enough games yet" (raw counts still shown)

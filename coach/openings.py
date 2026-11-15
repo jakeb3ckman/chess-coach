@@ -15,6 +15,7 @@ Grouping (so the list isn't hundreds of sub-variations):
 from __future__ import annotations
 
 import csv
+import json
 from collections import Counter, defaultdict
 from functools import lru_cache
 from pathlib import Path
@@ -206,6 +207,8 @@ def build_openings(games: list[dict], data_dir: Path, settings: dict, tactic_epd
             groups[(v, v) if vcount[v] >= os_["group_min_games"] else (f"{fam} (other lines)", fam)].append(g)
         rows = []
         for (label, anchor), gg in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+            for g in gg:
+                g["_group"] = label  # used by Progress and to tag cards with their opening
             epd = name_pos.get(anchor) if anchor else None
             row = {"name": label, "family": family(label.replace(" (other lines)", "")), **_res([g["my_result"] for g in gg]),
                    "tc": {tc: _res([g["my_result"] for g in gg if g["time_class"] == tc])
@@ -227,6 +230,7 @@ def build_openings(games: list[dict], data_dir: Path, settings: dict, tactic_epd
     nodes = {}
     leaks = []
     cards = []
+    node_info = {}  # node -> (board, Win% behind best per searched move, occurrences), for Progress
     for (color, epd) in keep:
         oo = occ[(color, epd)]
         g0, i0 = max(oo, key=lambda x: x[0]["ended_at"])
@@ -272,6 +276,8 @@ def build_openings(games: list[dict], data_dir: Path, settings: dict, tactic_epd
                 for m in moves:
                     if m["u"] in behind:
                         m["behind"] = behind[m["u"]]
+                complete = len(pos["lines"]) < ps["multipv"] or behind[pos["lines"][-1][2].split()[0]] > os_["right_within"]
+                node_info[node_key(color, epd)] = (b.copy(), behind, oo, complete)
                 # ---- leaks at this position
                 best_u = pos["lines"][0][2].split()[0]
                 for m in moves:
@@ -318,12 +324,95 @@ def build_openings(games: list[dict], data_dir: Path, settings: dict, tactic_epd
     replies.sort(key=lambda r: -r["n"])
     leaks.sort(key=lambda r: -r["total"])
     cards.sort(key=lambda tc: -tc[0])
+    progress = build_progress(games, groups_out, leaks, node_info, data_dir, settings)
     starts = {c: node_key(c, chess.Board().epd()) for c in ("white", "black")}
     out = {"format": 1, "games": len(games), "groups": groups_out, "replies": replies[:30], "leaks": leaks,
-           "nodes": nodes, "start": starts,
+           "nodes": nodes, "start": starts, "progress": progress,
            "rules": {k: os_[k] for k in ("leak_min_drop", "leak_error_drop", "right_within", "playable_within",
                                           "group_min_games", "trend_block")}}
     return out, [c for _, c in cards]
+
+
+def build_progress(games: list[dict], groups_out: dict, leaks: list[dict], node_info: dict, data_dir: Path,
+                   settings: dict) -> dict:
+    """Progress since the training start date (settings [progress]), per opening
+    group, from stored games and stored engine output only (no new engine work):
+      - blunders per 100 moves in my first 15 moves (my moves losing >= 15 Win%,
+        deep pass where stored, as for mistakes), before and since;
+      - each leak position (error or repertoire choice) of the group: how often I
+        played a good move (within right_within Win% of the best, by the position
+        pass), one of my old leak moves, another searched move, or a move the
+        pass didn't search where the list of good moves may be incomplete.
+    A game counts as 'since' when it ended on or after the start date (local time).
+    A position belongs to the group most of its games belong to.
+    Card statuses per opening are computed in the app from the reviews."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo(settings["insights"]["timezone"])
+    start = settings["progress"]["training_start"]
+    right = settings["openings"]["right_within"]
+    max_ply = settings["positions"]["max_ply"]
+
+    def period(g):
+        d = datetime.fromisoformat(g["ended_at"].replace("Z", "+00:00")).astimezone(tz).date().isoformat()
+        return "since" if d >= start else "before"
+
+    rows = {(c, r["name"]): r for c in groups_out for r in groups_out[c]}
+    blund = defaultdict(lambda: {"before": Counter(), "since": Counter()})
+    for g in games:
+        p = data_dir / "analysis" / g["site"] / g["ended_at"][:7] / f"{g['site_id']}.json"
+        if not p.exists() or "_group" not in g:
+            continue
+        with open(p) as f:
+            a = json.load(f)
+        me = g["my_color"]
+        par = 0 if me == "white" else 1
+        c = blund[(me, g["_group"])][period(g)]
+        c["games"] += 1
+        for i, mv in enumerate(g["_m"][:max_ply]):
+            if i % 2 == par:
+                c["moves"] += 1
+                c["blunders"] += my_move_drop(i, mv, me, a["p1"], a.get("p2", {}))[0] >= 15
+    for key, row in rows.items():
+        bc = blund.get(key, {"before": Counter(), "since": Counter()})
+        row["progress"] = {"blunders": {k: {"blunders": v["blunders"], "moves": v["moves"], "games": v["games"]}
+                                        for k, v in bc.items()}, "leaks": []}
+
+    by_node = defaultdict(list)
+    for lk in leaks:
+        by_node[lk["node"]].append(lk)
+    for nk, lks in by_node.items():
+        b, behind, oo, complete = node_info[nk]
+        color = lks[0]["color"]
+        old = {lk["move"] for lk in lks}
+        good = {u for u, d in behind.items() if d <= right}
+        cnt = {"before": Counter(), "since": Counter()}
+        grp = Counter()
+        for g, i in oo:
+            mv = g["_m"][i]
+            c = cnt[period(g)]
+            c["n"] += 1
+            # 'unchecked': a move the position pass didn't search, where 5 searched
+            # moves were all good, so it may be good too.
+            c["good" if mv in good else "old" if mv in old else
+              "other" if (mv in behind or complete) else "unchecked"] += 1
+            grp[g.get("_group")] += 1
+        row = rows.get((color, grp.most_common(1)[0][0]))
+        if row is None:
+            continue
+        san = lambda u: b.san(chess.Move.from_uci(u))  # noqa: E731
+        row["progress"]["leaks"].append({
+            "node": nk, "path": lks[0]["path"], "kinds": sorted({lk["kind"] for lk in lks}),
+            "old": [san(u) for u in sorted(old, key=lambda u: -behind.get(u, 0))],
+            "good": [san(u) for u in sorted(good, key=lambda u: behind[u])],
+            "good_complete": complete,
+            "before": {k: cnt["before"][k] for k in ("n", "good", "old", "other", "unchecked")},
+            "since": {k: cnt["since"][k] for k in ("n", "good", "old", "other", "unchecked")}})
+    for row in rows.values():
+        # Positions reached since the start date first, most often reached first.
+        row["progress"]["leaks"].sort(key=lambda x: (-x["since"]["n"], -x["before"]["n"]))
+    return {"start": start, "min_games_since": settings["progress"]["min_games_since"],
+            "right_within": right}
 
 
 def _leak_card(b: chess.Board, epd: str, color: str, pos: dict, sc: dict, behind: dict, leak_moves: list[str],
@@ -356,6 +445,7 @@ def _leak_card(b: chess.Board, epd: str, color: str, pos: dict, sc: dict, behind
         "occ": [{"link": game_link_at(gg, ii), "site": gg["site"], "move": gg["_m"][ii], "drop": behind[gg["_m"][ii]],
                  "label": label_of(behind[gg["_m"][ii]], labels), "tc": gg["time_class"], "at": gg["ended_at"][:10]}
                 for gg, ii in sorted(xs, key=lambda x: x[0]["ended_at"], reverse=True)],
+        "opening": g.get("_group"),
         "right": sorted((u for u, d in behind.items() if d <= os_["right_within"]), key=lambda u: behind[u]),
         "alts": [{"u": u, "behind": behind[u], "eval": eval_text(sc[u]["score"], color)}
                  for u in sorted(behind, key=lambda u: behind[u])],

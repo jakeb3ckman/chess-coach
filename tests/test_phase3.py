@@ -169,6 +169,17 @@ def test_leaks_and_leak_cards_follow_the_stored_scores(tmp_path, settings):
         assert c["game"]["move"] not in c["right"]
         assert all(a["behind"] <= os_["right_within"] for a in c["alts"] if a["u"] in c["right"])
         assert all(chess.Move.from_uci(a["u"]) in chess.Board(c["fen"]).legal_moves for a in c["alts"])
+    # Progress: every leak position is placed in a group, and its counts add up.
+    placed = [l for col in out["groups"].values() for r in col for l in r["progress"]["leaks"]]
+    assert {l["node"] for l in placed} == {lk["node"] for lk in out["leaks"]}
+    for l in placed:
+        for per in ("before", "since"):
+            p = l[per]
+            assert p["good"] + p["old"] + p["other"] + p["unchecked"] == p["n"]
+        assert l["before"]["n"] + l["since"]["n"] == next(n["games"] for k, n in out["nodes"].items() if k == l["node"])
+    # The synthetic games all end before the default training start: nothing counts as "since".
+    assert all(r["progress"]["blunders"]["since"]["games"] == 0 for col in out["groups"].values() for r in col)
+    assert sum(r["progress"]["blunders"]["before"]["games"] for col in out["groups"].values() for r in col) == 0  # no analysis files here
     # Openings tree: every move's child link points at a node that exists.
     for n in out["nodes"].values():
         assert all(m["to"] is None or m["to"] in out["nodes"] for m in n["moves"])
