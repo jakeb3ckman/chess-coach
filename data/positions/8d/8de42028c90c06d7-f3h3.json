@@ -1,0 +1,1 @@
+{"format":1,"epd":"r1bqkb1r/pppp1p1p/5np1/4p3/2BnP3/3P1Q2/PPP2PPP/RNB1K1NR w KQkq -","move":"f3h3","engine":{"name":"Stockfish 19","threads":1,"hash_mb":16,"nodes":5000000},"score":-900,"depth":29,"pv":"f3h3 d7d5 c4b5 c7c6 h3g3 d4c2 e1d1 c2a1 e4d5 c6b5","secs":8.68}
