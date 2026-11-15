@@ -128,3 +128,36 @@ def test_deep_all_checks_every_move_and_matches_pipeline(fast_engine_settings):
     assert set(full["p2"]) == my_plies
     assert all(full["p2"][k] == v for k, v in normal["p2"].items())
     assert full["p1"] == normal["p1"] and full.get("deep_all") is True and "deep_all" not in normal
+
+
+def test_refutation_repeats_the_stored_after_search(fast_engine_settings):
+    """The refutation pass is the same search as pass 2's 'after' check, so its
+    score must equal the stored one; it only adds the opponent's line."""
+    from coach.engine import refute_game
+    game, _ = engine_fixture("186778591044")
+    eng = open_engine(fast_engine_settings)
+    try:
+        analysis = analyze_game(game, fast_engine_settings, eng)
+        ref = refute_game(game, analysis, fast_engine_settings, eng)
+    finally:
+        eng.quit()
+    assert set(ref["after"]) == set(analysis["p2"])
+    for k, (score, depth, pv) in ref["after"].items():
+        assert score == analysis["p2"][k]["after"]
+        assert depth == analysis["p2"][k]["after_d"]
+
+
+def test_refutations_added_to_already_analyzed_games(tmp_path, chesscom_games, fast_engine_settings):
+    store = make_store(tmp_path, chesscom_games, fast_engine_settings)
+    eng = open_engine(fast_engine_settings)
+    try:
+        g = next(store.iter_games())
+        store.save_analysis(g, analyze_game(g, fast_engine_settings, eng))
+    finally:
+        eng.quit()
+    before = store.analysis_path(g).read_bytes()
+    r = run_analysis(store, fast_engine_settings, workers=2, log=lambda *_: None)
+    assert r["remaining"] == 0
+    assert store.analysis_path(g).read_bytes() == before  # analysis never rewritten
+    assert all(store.has_analysis(x) and store.has_refutation(x) for x in store.iter_games())
+    assert run_analysis(store, fast_engine_settings, workers=2, log=lambda *_: None)["done"] == 0

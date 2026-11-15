@@ -128,3 +128,41 @@ def analyze_game(game: dict, settings: dict, eng: chess.engine.SimpleEngine, dee
     if deep_all:
         out["deep_all"] = True
     return out
+
+
+REFUTATION_FORMAT = 1
+
+
+def refute_game(game: dict, analysis: dict, settings: dict, eng: chess.engine.SimpleEngine) -> dict:
+    """Engine line for the opponent after each of my deep-checked moves.
+
+    Pass 2 stored only the score of the position after my move. This repeats that
+    exact search (same node budget, same move history, hash cleared) and keeps the
+    principal variation too: the opponent's refutation of my move. Because the
+    search is identical and deterministic, its score must equal the stored p2
+    "after" score; the build checks this.
+    """
+    e = settings["engine"]
+    t0 = time.monotonic()
+    board = chess.Board()
+    boards = [board.copy()]
+    for u in game["moves"].split():
+        board.push(chess.Move.from_uci(u))
+        boards.append(board.copy())
+    after = {}
+    for k in sorted(analysis["p2"], key=int):
+        b = boards[int(k) + 1]
+        ts = terminal_score(b)
+        if ts is not None:
+            after[k] = [ts, None, ""]
+            continue
+        info = _analyse(eng, b, e["pass2_nodes"])
+        after[k] = [encode_score(info["score"]), info.get("depth"), _pv(info, e["pv_max_plies"])]
+    return {
+        "format": REFUTATION_FORMAT,
+        "engine": {"name": eng.id.get("name"), "threads": e["threads"], "hash_mb": e["hash_mb"],
+                   "nodes": e["pass2_nodes"]},
+        "after": after,
+        "secs": round(time.monotonic() - t0, 2),
+    }
+

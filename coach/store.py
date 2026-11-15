@@ -2,6 +2,7 @@
 
 data/games/{site}/{YYYY-MM}/{site_id}.json     imported game (written once)
 data/analysis/{site}/{YYYY-MM}/{site_id}.json  engine output (written once)
+data/refutations/{site}/{YYYY-MM}/{site_id}.json  opponent's engine line after my deep-checked moves (written once)
 data/state/import.json                         importer cursors / ETags
 data/derived/                                  rebuilt every run, not committed
 """
@@ -91,6 +92,25 @@ class Store:
         if path.exists():
             raise FileExistsError(f"analysis already exists, refusing to overwrite: {path}")
         self.write_json_atomic(path, analysis)
+
+    def refutation_path(self, game: dict) -> Path:
+        return self.data / "refutations" / self._rel(game)
+
+    def has_refutation(self, game: dict) -> bool:
+        return self.refutation_path(game).exists()
+
+    def load_refutation(self, game: dict) -> dict | None:
+        p = self.refutation_path(game)
+        if not p.exists():
+            return None
+        with open(p) as f:
+            return json.load(f)
+
+    def save_refutation(self, game: dict, data: dict) -> None:
+        path = self.refutation_path(game)
+        if path.exists():
+            raise FileExistsError(f"refutation already exists, refusing to overwrite: {path}")
+        self.write_json_atomic(path, data)
 
     def load_state(self) -> dict:
         if self.state_path.exists():

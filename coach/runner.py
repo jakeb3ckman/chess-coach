@@ -7,6 +7,10 @@
   runner commits and pushes after every `batch` finished games, so a killed job
   loses at most one batch.
 - New games stop being started once the time budget is used up.
+- Each game gets two write-once files: the analysis (pass 1 + pass 2) and the
+  refutations (the opponent's engine line after each deep-checked move). Games
+  analyzed before refutations existed get only the refutation file; their
+  analysis file is never touched.
 """
 from __future__ import annotations
 
@@ -17,7 +21,7 @@ import subprocess
 import time
 import traceback
 
-from .engine import analyze_game, open_engine
+from .engine import analyze_game, open_engine, refute_game
 from .store import Store
 
 
@@ -25,13 +29,16 @@ def _worker_loop(settings, tasks, results):
     eng = open_engine(settings)
     try:
         while True:
-            g = tasks.get()
-            if g is None:
+            task = tasks.get()
+            if task is None:
                 return
+            g, existing = task
             try:
-                results.put((g, analyze_game(g, settings, eng), None))
+                analysis = existing if existing is not None else analyze_game(g, settings, eng)
+                results.put((g, None if existing is not None else analysis,
+                             refute_game(g, analysis, settings, eng), None))
             except Exception:
-                results.put((g, None, traceback.format_exc(limit=3)))
+                results.put((g, None, None, traceback.format_exc(limit=3)))
     finally:
         eng.quit()
 
@@ -42,7 +49,8 @@ def shard_of(game_id: str, n: int) -> int:
 
 def pending_games(store: Store, shard: int = 0, shards: int = 1) -> list[dict]:
     todo = [g for g in store.iter_games()
-            if shard_of(g["id"], shards) == shard and not store.has_analysis(g) and not store.has_failure(g)]
+            if shard_of(g["id"], shards) == shard and not store.has_failure(g)
+            and not (store.has_analysis(g) and store.has_refutation(g))]
     todo.sort(key=lambda g: g["ended_at"], reverse=True)
     return todo
 
@@ -70,15 +78,15 @@ def run_analysis(store: Store, settings: dict, *, shard=0, shards=1, workers=1,
         todo = todo[:limit]
     deadline = time.monotonic() + budget_s
     started = time.monotonic()
-    done, failed, pending_paths, engine_secs = 0, [], [], 0.0
+    done, failed, pending_paths, engine_secs, batch_games = 0, [], [], 0.0, 0
     it = iter(todo)
 
     def flush():
-        nonlocal pending_paths
+        nonlocal pending_paths, batch_games
         if commit and pending_paths:
-            git_commit_push(pending_paths, f"analysis: shard {shard}/{shards}, {len(pending_paths)} games",
+            git_commit_push(pending_paths, f"analysis: shard {shard}/{shards}, {batch_games} games",
                             store.data.parent, push=push)
-        pending_paths = []
+        pending_paths, batch_games = [], 0
 
     ctx = mp.get_context("spawn")
     tasks, results = ctx.Queue(), ctx.Queue()
@@ -94,7 +102,7 @@ def run_analysis(store: Store, settings: dict, *, shard=0, shards=1, workers=1,
             return
         g = next(it, None)
         if g is not None:
-            tasks.put(g)
+            tasks.put((g, store.load_analysis(g)))
             inflight += 1
 
     try:
@@ -102,22 +110,27 @@ def run_analysis(store: Store, settings: dict, *, shard=0, shards=1, workers=1,
             submit_next()
         while inflight:
             try:
-                g, analysis, err = results.get(timeout=60)
+                g, analysis, refutation, err = results.get(timeout=60)
             except queue.Empty:
                 if not any(p.is_alive() for p in procs):
                     raise RuntimeError("all analysis workers died (is Stockfish installed?)")
                 continue
             inflight -= 1
             if err is None:
-                store.save_analysis(g, analysis)
-                pending_paths.append(store.analysis_path(g))
-                engine_secs += analysis["secs"]
+                if analysis is not None:
+                    store.save_analysis(g, analysis)
+                    pending_paths.append(store.analysis_path(g))
+                    engine_secs += analysis["secs"]
+                store.save_refutation(g, refutation)
+                pending_paths.append(store.refutation_path(g))
+                engine_secs += refutation["secs"]
                 done += 1
             else:  # record it so it isn't retried forever; delete the marker to retry
                 failed.append({"id": g["id"], "error": err})
                 store.save_failure(g, err)
                 pending_paths.append(store.failure_path(g))
-            if len(pending_paths) >= batch:
+            batch_games += 1
+            if batch_games >= batch:
                 flush()
                 log(f"[shard {shard}/{shards}] {done}/{len(todo)} games analyzed")
             submit_next()
