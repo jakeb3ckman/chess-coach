@@ -7,9 +7,12 @@
 <meta name="theme-color" content="#262421">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- "black": an opaque status bar with the app below it. "black-translucent" drew the
+     app underneath the status bar, where iOS blurs it. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Chess Coach">
 <title>Chess Coach</title>
+<meta name="app-version" content="__VERSION__">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
@@ -20,7 +23,8 @@
   <header id="bar"><div id="counts"></div><button id="menu" aria-label="Settings">⚙︎</button></header>
   <div id="hint" hidden></div>
   <main id="board-wrap"><div id="board"></div></main>
-  <section id="panel" aria-live="polite"><p class="muted">Loading…</p></section>
+  <div id="banner" class="prompt" aria-live="polite">Loading…</div>
+  <section id="panel"></section>
 </div>
 <div id="promo" hidden></div>
 <dialog id="settings"></dialog>

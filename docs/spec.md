@@ -71,11 +71,13 @@ GitHub Actions (nightly + "Run" button)          GitHub Pages (static site)
 
 Scores are raw engine output (`cp` or `mate`, White's view).
 
+**Refutations** (`data/refutations/...json`, added in the Phase 2 rework, written once): for every deep-checked move of mine, Stockfish's line for the opponent from the position after my move (`after: {ply: [score, depth, pv]}`). It repeats pass 2's "after" search exactly (2M nodes, same move history, hash cleared), so its score must equal the stored `p2` "after" score; the build records any mismatch. Analysis files are never rewritten: games analyzed before this existed only get the new file. New games get both files from the same job.
+
 **Mistake** (derived, rebuilt every run): `game_id`, `ply`, `fen_before`, `my_move`, `best_move`, `best_line`, `win_before`, `win_after`, `drop`, `category`, `second_best_gap`, `clock_before_s`, `time_spent_s`, `time_class`, `source_pass`, `card_status` (eligible, or the rule that excluded it).
 
 **Card** (derived): `card_id` (hash of normalized position + solution move), `fen`, `solution_uci`, `engine_line`, `deck` (`tactics` | `opening`), `occurrences[]` (mistake refs), `created_at`.
 
-**Review event** (saved on the device first; from 2.3 also in the progress repo, append-only, one file per device per month, e.g. `log/iphone-3f9a/2026-11.ndjson`): `id` (random, so a re-sent event is never counted twice), `v` (format version), `card_id`, `ts`, `device`, `move_played`, `correct`, `rating` (FSRS Again/Hard/Good/Easy), `ms_to_answer`. A card's schedule = that card's events replayed through `ts-fsrs` in time order (FSRS-7, desired retention 0.90, learning steps 1 min and 10 min, relearning step 10 min, no fuzz, so every device computes exactly the same schedule from the same events).
+**Review event** (saved on the device first; from 2.3 also in the progress repo, append-only, one file per device per month, e.g. `log/iphone-3f9a/2026-11.ndjson`). Format 2 (Phase 2 rework) logs one event per thing that happens in a showing: `id` (random, so a re-sent event is never counted twice), `v`, `card_id`, `ts`, `day` (study day, stored so replay never depends on time zone), `device`, `kind` (`move`, `hint`, `solution`, `mymove`, `grade`), `showing` (1 = first showing that day), `attempt`, `move_played`, `correct`, `habit`, `sched`, `rating`, `ms`, `status_after`. **Exactly one event per card per study day has `sched: true`: the outcome of the first showing that day.** A card's schedule = its `sched` events replayed through `ts-fsrs` in time order; everything else is drilling and is kept for later insights but never moves the schedule. Format-1 events (milestone 2.2) count the same way: the first answer per card per day is the scheduling event. Scheduler settings: FSRS-7, desired retention 0.90, learning steps 1 day and 2 days, relearning step 1 day, model override off, no fuzz, so every device computes exactly the same schedule from the same events.
 
 ## 4. Classification and puzzle rules
 
@@ -99,7 +101,26 @@ All mistakes at every label are stored, in every time control. **A mistake becom
 | Not in severe time trouble | Clock at the start of the move ≥ **min(15 s, 10% of base time)**. 1+0 → 6 s, 2+1 → 12 s, 3+0 and slower → 15 s |
 | Not a duplicate | Same normalized position (pieces, side to move, castling, real en-passant) = one card; extra occurrences are attached to it |
 
-New cards are introduced in this order: **number of occurrences** (same position missed more than once comes first), then **recency**, then **drop size**. The cap is **10 new cards/day** (setting). Grading: wrong move = Again, right move = Good, optional Easy button after a correct answer. Desired retention 0.90 (FSRS default).
+New cards are introduced in this order: **number of occurrences** (same position missed more than once comes first), then **recency**, then **drop size**. The cap is **10 new cards/day** (setting). Grading (first showing of the day only): any miss in that showing = Again; right on the first try = Good, or Easy if I press **Too easy**. Desired retention 0.90 (FSRS default). Resulting intervals: a new card missed comes back the next day; a new card right first time comes back in 2 days, then FSRS takes over (about 3 weeks after that); "Too easy" on a new card gives about 54 days; a known card missed comes back the next day.
+
+### 4.1 Tags (Phase 2 rework)
+
+Every card is tagged from stored data only: Stockfish's stored scores and lines, plus legal-move facts from python-chess. Code: `coach/tags.py`. A card carries the union of the tags of all its occurrences. Tags are shown only after the answer, so they never give the solution away.
+
+| Tag | Exact rule |
+|---|---|
+| `opening` | My move is one of my first 10 moves of the game (fullmove number ≤ 10). |
+| `mate` | The stored score of the engine's best line from the card position is a forced mate **for me** (mate in n, n ≥ 1). |
+| `allowed mate` | The stored score after my game move is a forced mate **against me**. |
+| `thrown win` | Win% before the move > 90 and Win% after my move < 50 (the same thresholds as the card rule's exception, from `settings.toml`). |
+| `missed capture` | The engine's best move is a capture (python-chess `is_capture`, en passant included), **and** my move did not capture on that same square. (Taking the right piece with the wrong piece, e.g. ...Bxf6 instead of ...exf6, is not a missed capture.) |
+| `hung piece` | See below. |
+
+**`hung piece`, precisely.** Start from the card position and count material for me minus the opponent, with standard values P 1, N 3, B 3, R 5, Q 9 (king 0). Play my game move. Take Stockfish's refutation line for the position after my move (from `data/refutations/`, the same 2M-node search whose score is stored). The tag applies only if **all** of these hold:
+1. the refutation's first move captures one of my knights, bishops, rooks or queen (not a pawn, not via en passant);
+2. following the refutation line from there while every move is a capture (at most 8 plies; the first non-capture ends it; a promotion counts at its new value), I end up **at least 3 points of material worse** than in the card position.
+
+So it means "the engine's reply to my move takes a piece, and the capture sequence that follows leaves me down at least a minor piece". It includes moving a piece to an attacked square, leaving a piece undefended, and failing to save a piece that was already attacked. It does not include forks, pins or mating attacks whose first move isn't a capture (no material changes on the first move), or exchanges where I get the material back within the sequence. If a card has no refutation line yet, it gets no `hung piece` tag.
 
 ## 5. Analysis depth and first-import time
 
@@ -133,17 +154,25 @@ Ongoing at your current pace (~850 games/month) is roughly a quarter of that per
 
 ## 6. The app, and sync between iPhone and Mac
 
-### 6.1 Trainer (milestones 2.1 and 2.2, local only)
+### 6.1 Trainer (milestones 2.1 and 2.2, local only; reworked 2026-11-14)
 
-- **The board is the whole screen.** On a phone the board is the full width; a thin bar above it shows "due / new left today", and a short panel below shows the prompt and, after an answer, the result. No page scrolling while solving.
+- **The board is the whole screen.** It is exactly as wide as the screen's content area (never wider), centred, with the safe-area insets of the Home Screen app applied. Nothing on the page scrolls sideways. Above it: the four set counts. Below it: a banner and a short panel.
 - **Moving with a thumb:** tap a piece, then tap the target square (legal targets are marked), or drag. Touches never scroll the page. Promotion shows a four-piece picker.
-- **Each card:** the position before my move, my side at the bottom, the opponent's previous move highlighted. "Find the best move."
-- **Right move:** graded Good. The engine line is shown, plus an optional **Easy** button.
-- **Wrong move:** graded Again. The board shows the engine's best move (green arrow) and the move I tried (red arrow). The full engine line can be stepped through move by move. It also shows what I played in the game and how much it lost, and links to the original game (Lichess links open at the move; Chess.com links open the game) plus a Lichess analysis board at that position.
-- **Daily queue:** first every card that is due (learning cards come back within the same session), then new cards in the approved order, at most **10 new cards per day**. The day rolls over at **4:00 a.m. local time**, so a late-night session counts as the same day.
-- **Data the app downloads:** one file, `data/cards.json`, holding only what a card needs (position, solution, engine line, previous move, occurrences with game links). Everything else in `data/` is never published.
-- **Storage:** reviews are saved in the app's own on-device database (IndexedDB) the moment they happen. The app asks iOS for persistent storage. Every review event is kept in an "outbox" from day one, so the reviews done before sync exists are uploaded when 2.3 arrives; nothing done in 2.2 is thrown away.
-- **Use the home-screen app from the first day.** On iPhone, the home-screen app has storage separate from Safari, and Safari may delete a website's data after 7 days without a visit. Reviews done in Safari would not show up in the home-screen app.
+- **Each card:** the position before my move, my side at the bottom, the opponent's previous move highlighted.
+- **The day's set** (in the style of Lotus Chess): when the app first opens on a study day it fixes that day's set: every card due before the day ends, plus new cards in the approved order up to 10 a day. The set is finished only when every card in it is Known.
+  - Statuses: **Remaining**, **Missed**, **Unsure**, **Known**, shown as four counts throughout.
+  - Right on the first showing: Known. Wrong (or Hint, or Solution): Missed, and the card comes back **3 cards later**. Right on a later showing: Missed → Unsure (back **5 cards later**), Unsure → Known. Wrong again: back to Missed.
+  - **Finish later** saves the place; reopening the app the same day offers **Resume**. A finished set shows a "Set complete" screen.
+  - Only the first showing of a card each day feeds the scheduler (section 3). Later showings that day are drilling: logged, never moving the card further out.
+- **Banner:** white "White/Black to move. Find the best move."; red when wrong; green when solved.
+- **Wrong move:** the banner says "Not the best move. Try again.", or "That's the move you played in the game." when my move equals a move I played from this position in any of the card's games; that showing counts as a **habit** on the card (shown as a tag, e.g. "habit ×2"). The piece goes back and I can try again. Three buttons appear: **Hint** (marks the square of the piece that moves; counts as missed), **Solution** (reveals the answer; counts as missed), **My move** (shows the move I played in the game).
+- **After solving or revealing:** the engine's solution line, the move I played in the game, and the opponent's refutation of it, each with its evaluation in pawns from my side (a mate is shown as "mate in n" / "mated in n"). Win% is shown as secondary detail. Each line can be stepped through on the board. Then the card's tags and links to the original game (Lichess links open at the move) and a Lichess analysis board.
+- **Buttons after the first showing, if right first try:** **Too easy** and **Next**, each captioned with the real return date for that card ("Next: back in 2 days"). Otherwise one **Next**, captioned with what happens ("Again in a few cards, then back tomorrow", "Once more later in this set", "Known for today · back tomorrow").
+- **Study day:** starts at **4:00 a.m. local time**, so a late-night session counts as the same day.
+- **Updates reach the installed app on their own:** page loads go to the network first (offline: the cached copy), and when a new version takes over while the app is open it reloads at the next card boundary. Settings shows the **version number** (e.g. 2.2.1) and build id.
+- **Data the app downloads:** one file, `data/cards.json`, holding only what a card needs (position, solution, engine line and score, previous move, the game move with its score and refutation line, tags, occurrences with game links). Everything else in `data/` is never published.
+- **Storage:** reviews are saved in the app's own on-device database (IndexedDB) the moment they happen, together with each card's schedule and the day's set, in one transaction. The app asks iOS for persistent storage. Every review event is kept in an "outbox" from day one for sync. **Upgrades migrate, never reset:** the update from format 1 kept every event, backed up the old schedules, and recomputed each card's schedule from its events under the new rules.
+- **Use the home-screen app from the first day.** On iPhone, the home-screen app has storage separate from Safari, and Safari may delete a website's data after 7 days without a visit.
 
 ### 6.2 Sync (milestone 2.3, designed now, built after the stop)
 
@@ -213,6 +242,17 @@ The Phase 1 backfill started on this Mac (765 games) and was finished by the Git
 6. noindex on every page from the first deploy.
 7. Sync designed now (section 6.2): clear message on an expired or revoked token with reviews kept queued, token entered inside the installed app, and opening time that doesn't grow with reviews.
 8. On the phone the board is the whole experience; wrong answers show the engine line and a link to the original game (section 6.1).
+
+### Phase 2 rework decisions (2026-11-14)
+
+1. Lotus-style day sets with Remaining / Missed / Unsure / Known; only the first showing per day feeds FSRS (sections 3, 6.1).
+2. Learning steps 1 day / 2 days, relearning 1 day, model override off: a new card right first time returns in 2 days, a miss the next day.
+3. Retry after a wrong move with Hint / Solution / My move; habit counting when the wrong move equals a game move.
+4. Solution line, game move and refutation, each with its evaluation in pawns; refutation lines from a new write-once refutation pass (section 3).
+5. Tags with exact rules (section 4.1), shown only after the answer.
+6. "Too easy" replaces "Easy"; both buttons show the real return date.
+7. Layout: board fits the screen exactly; status bar style `black`; version number in Settings; updates reach the installed app.
+8. Not in this rework: sync, multi-move puzzles, the opening report, an insights page. Their data is kept (every showing event, habit flags, timings, refutation lines).
 
 ## 9. Risks and unknowns
 

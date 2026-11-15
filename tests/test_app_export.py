@@ -5,14 +5,14 @@ import chess
 
 from coach.build import app_cards, build_cards, derive_mistakes, game_link
 
-from .conftest import engine_fixture
+from .conftest import engine_fixture, engine_refutation
 
 
 def _cards(settings):
     out = []
     for gid in ("186778591044", "187124656900"):
         game, analysis = engine_fixture(gid)
-        out += derive_mistakes(game, analysis, settings)
+        out += derive_mistakes(game, analysis, settings, engine_refutation(gid))
     return build_cards(out)
 
 
@@ -20,11 +20,16 @@ def test_app_cards_hold_only_card_fields(settings):
     cards = _cards(settings)
     assert cards, "fixtures should yield at least one card"
     app = app_cards(cards)
-    assert app["format"] == 1
+    assert app["format"] == 2
     assert [c["id"] for c in app["cards"]] == [c["card_id"] for c in cards]  # order kept
     for c in app["cards"]:
-        assert set(c) == {"id", "deck", "fen", "solution", "line", "color", "prev", "occ"}
+        assert set(c) == {"id", "deck", "fen", "solution", "line", "color", "prev", "occ", "tags", "best_eval", "game"}
+        assert set(c["game"]) == {"move", "eval", "refutation", "win_before", "win_after", "move_number"}
+        assert c["game"]["refutation"], "deep-checked moves always have a refutation line"
         board = chess.Board(c["fen"])
+        after = board.copy()
+        after.push_uci(c["game"]["move"])
+        assert chess.Move.from_uci(c["game"]["refutation"].split()[0]) in after.legal_moves
         assert board.turn == (c["color"] == "white")
         assert chess.Move.from_uci(c["solution"]) in board.legal_moves
         assert c["line"].split()[0] == c["solution"]

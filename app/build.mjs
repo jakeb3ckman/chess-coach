@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
+const VERSION = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8')).version;
 const dist = join(here, 'dist');
 const args = process.argv.slice(2);
 const serve = args.includes('--serve');
@@ -33,7 +34,7 @@ const opts = {
   minify: !serve,
   sourcemap: serve,
   legalComments: 'eof',
-  define: { BUILD_ID: '"dev"' },
+  define: { BUILD_ID: '"dev"', APP_VERSION: JSON.stringify(VERSION) },
 };
 
 if (serve) {
@@ -46,16 +47,16 @@ if (serve) {
   // Build once to hash the output, then stamp the hash in as the version.
   await build(opts);
   const id = createHash('sha256').update(readFileSync(join(dist, 'app.js'))).update(css).digest('hex').slice(0, 10);
-  await build({ ...opts, define: { BUILD_ID: JSON.stringify(id) } });
+  await build({ ...opts, define: { BUILD_ID: JSON.stringify(id), APP_VERSION: JSON.stringify(VERSION) } });
   finish(id);
-  console.log(`built dist/ (version ${id})`);
+  console.log(`built dist/ (version ${VERSION}, build ${id})`);
 }
 
 function finish(id) {
   for (const f of readdirSync(join(here, 'public'))) {
     const src = join(here, 'public', f);
     if (/\.(html|js|webmanifest)$/.test(f)) {
-      writeFileSync(join(dist, f), readFileSync(src, 'utf8').replaceAll('__BUILD_ID__', id));
+      writeFileSync(join(dist, f), readFileSync(src, 'utf8').replaceAll('__BUILD_ID__', id).replaceAll('__VERSION__', VERSION));
     } else {
       cpSync(src, join(dist, f));
     }

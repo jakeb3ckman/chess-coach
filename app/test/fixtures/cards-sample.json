@@ -1,6 +1,6 @@
 {
- "_source": "Copied from the app card export (coach build --app-out) on 2026-11-14. Every position, solution and line is stored Stockfish 19 output: 1 thread, 16 MB hash, pass 2 at 2,000,000 nodes, MultiPV 2 (see data/analysis/).",
- "format": 1,
+ "_source": "Copied from the app card export (coach build --app-out) on 2026-11-14. Every position, solution and line is stored Stockfish 19 output: 1 thread, 16 MB hash, pass 2 at 2,000,000 nodes, MultiPV 2 (see data/analysis/); refutation lines from the refutation pass at 2,000,000 nodes (data/refutations/). Refreshed 2026-11-15 with the format-2 export.",
+ "format": 2,
  "cards": [
   {
    "id": "16b450be2bd1",
@@ -10,6 +10,18 @@
    "line": "f3d1 d7d5 e4d5 b7b5 c2c3 b5c4 c3d4 c4d3 d4e5 f6d5",
    "color": "white",
    "prev": "c6d4",
+   "tags": [
+    "opening"
+   ],
+   "best_eval": "-1.18",
+   "game": {
+    "move": "f3e3",
+    "eval": "-9.65",
+    "refutation": "d4c2 e1e2 c2e3 c1e3 d7d5 e4d5 f6d5 c4d5 d8d5 b1c3",
+    "win_before": 39.3,
+    "win_after": 2.8,
+    "move_number": 6
+   },
    "occ": [
     {
      "link": "https://www.chess.com/game/live/174417205376",
@@ -102,6 +114,18 @@
    "line": "c8e6 f7e5",
    "color": "black",
    "prev": "e5f7",
+   "tags": [
+    "hung piece"
+   ],
+   "best_eval": "-1.24",
+   "game": {
+    "move": "g8f6",
+    "eval": "-7.03",
+    "refutation": "f7h8 c8e6 c4e6 c5e6 h8g6 e8c8 d1e2 e6d4 e2f1 h7g6",
+    "win_before": 38.8,
+    "win_after": 7.0,
+    "move_number": 11
+   },
    "occ": [
     {
      "link": "https://lichess.org/nxQwm0wd/black#21",
@@ -122,6 +146,19 @@
    "line": "d6e5 d4e5 d8d1 e1d1 f6g4 d1e1 g4e5 b1c3 b8c6 f2f4",
    "color": "black",
    "prev": "e4e5",
+   "tags": [
+    "opening",
+    "missed capture"
+   ],
+   "best_eval": "+1.53",
+   "game": {
+    "move": "f6e4",
+    "eval": "-4.63",
+    "refutation": "f1d3 e4f2 e1f2 d6e5 d4e5 d8d4 c1e3 d4b2 b1d2 b2e5",
+    "win_before": 63.7,
+    "win_after": 15.4,
+    "move_number": 3
+   },
    "occ": [
     {
      "link": "https://www.chess.com/game/live/172376371310",
@@ -169,6 +206,18 @@
    "line": "e1g1 e8d7 f1b1 b2a3 b1b7 d7e8 a1b1 f7f6 h2h3 f8e7",
    "color": "white",
    "prev": "b5b2",
+   "tags": [
+    "hung piece"
+   ],
+   "best_eval": "-2.52",
+   "game": {
+    "move": "a1d1",
+    "eval": "-5.68",
+    "refutation": "e8d7 e1g1 b2b6 d1b1 b6d4 b1b7 d7e8 c3d4 e6e5 f4e5",
+    "win_before": 28.3,
+    "win_after": 11.0,
+    "move_number": 13
+   },
    "occ": [
     {
      "link": "https://www.chess.com/game/live/186397239308",

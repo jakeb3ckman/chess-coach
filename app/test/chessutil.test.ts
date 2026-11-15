@@ -15,6 +15,15 @@ function checkCard(c: CardsFile['cards'][number]) {
   const [from, to] = [c.solution.slice(0, 2), c.solution.slice(2, 4)];
   assert.ok(legalDests(c.fen).get(from)?.includes(to), `${c.id}: solution not offered on the board`);
   for (const o of c.occ) assert.ok(sanOf(c.fen, o.move), `${c.id}: game move illegal`);
+  assert.equal(c.game.move, c.occ[0].move, `${c.id}: game move is the latest occurrence's`);
+  if (c.game.refutation) {
+    const after = lineSteps(c.fen, c.game.move)[0].fenAfter;
+    const ref = lineSteps(after, c.game.refutation);
+    assert.equal(ref.length, c.game.refutation.split(' ').length, `${c.id}: refutation line not fully legal`);
+  }
+  for (const t of c.tags) assert.ok(['opening', 'mate', 'allowed mate', 'thrown win', 'missed capture', 'hung piece'].includes(t), `${c.id}: unknown tag ${t}`);
+  assert.match(c.best_eval, /^(-?M\d+|[+-]\d+\.\d\d)$/);
+  assert.match(c.game.eval, /^(-?M\d+|[+-]\d+\.\d\d)$/);
   if (c.prev) {
     // The previous move must be one that can lead to this position: it lands on a square now occupied.
     assert.ok(new Chess(c.fen).get(c.prev.slice(2, 4) as never), `${c.id}: previous move target empty`);

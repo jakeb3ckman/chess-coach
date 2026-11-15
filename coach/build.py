@@ -13,16 +13,18 @@ from pathlib import Path
 import chess
 
 from .classify import card_exclusions, label, win_pct
+from .tags import TAG_ORDER, eval_text, tags_for
 from .store import Store
 
 
-def derive_mistakes(game: dict, analysis: dict, settings: dict) -> list[dict]:
+def derive_mistakes(game: dict, analysis: dict, settings: dict, refutation: dict | None = None) -> list[dict]:
     labels, cards = settings["labels"], settings["cards"]
     me = game["my_color"]
     my_parity = 0 if me == "white" else 1
     moves = game["moves"].split()
     clocks = game.get("clocks") or [None] * len(moves)
     p1, pv1, p2 = analysis["p1"], analysis.get("pv1", {}), analysis.get("p2", {})
+    refs = (refutation or {}).get("after", {})
     board = chess.Board()
     out = []
     for i, mv in enumerate(moves):
@@ -80,7 +82,13 @@ def derive_mistakes(game: dict, analysis: dict, settings: dict) -> list[dict]:
                     "time_spent_s": spent,
                     "source_pass": source,
                 }
+                ref = refs.get(str(i)) if source == 2 else None
+                m["refutation_line"] = ref[2] if ref else None
+                m["refutation_score"] = ref[0] if ref else None
+                # The refutation pass repeats the stored 'after' search exactly.
+                m["refutation_matches"] = (ref[0] == after_score) if ref else None
                 m["excluded_by"] = card_exclusions(m, cards)
+                m["tags"] = tags_for(m, cards)
                 out.append(m)
         board.push_uci(mv)
     return out
@@ -111,6 +119,10 @@ def build_cards(mistakes: list[dict]) -> list[dict]:
             "latest_at": latest["ended_at"],
             "max_drop": max(m["drop"] for m in occ),
             "solution_conflict": len(solutions) > 1,
+            "tags": [t for t in TAG_ORDER if any(t in m["tags"] for m in occ)],
+            "best_score": latest["score_before"],
+            "game": {k: latest[k] for k in ("my_move", "score_after", "refutation_line", "refutation_score",
+                                             "win_before", "win_after", "drop", "move_number")},
         })
     return order_new_cards(cards)
 
@@ -128,7 +140,7 @@ def game_link(occ: dict, my_color: str) -> str:
     return occ["url"]
 
 
-APP_CARDS_FORMAT = 1
+APP_CARDS_FORMAT = 2
 
 
 def app_cards(cards: list[dict]) -> dict:
@@ -144,6 +156,16 @@ def app_cards(cards: list[dict]) -> dict:
             "line": c["engine_line"],
             "color": c["my_color"],
             "prev": c["prev_move"],
+            "tags": c["tags"],
+            "best_eval": eval_text(c["best_score"], c["my_color"]),
+            "game": {
+                "move": c["game"]["my_move"],
+                "eval": eval_text(c["game"]["score_after"], c["my_color"]),
+                "refutation": c["game"]["refutation_line"],
+                "win_before": c["game"]["win_before"],
+                "win_after": c["game"]["win_after"],
+                "move_number": c["game"]["move_number"],
+            },
             "occ": [{"link": game_link(o, c["my_color"]), "site": o["game_id"].split(":")[0],
                      "move": o["my_move"], "drop": o["drop"], "label": o["label"],
                      "tc": o["time_class"], "at": o["ended_at"][:10]} for o in c["occurrences"]],
@@ -159,7 +181,7 @@ def build_all(store: Store, settings: dict, app_out=None) -> dict:
         if a is None:
             continue
         n_analyzed += 1
-        mistakes.extend(derive_mistakes(g, a, settings))
+        mistakes.extend(derive_mistakes(g, a, settings, store.load_refutation(g)))
     cards = build_cards(mistakes)
     store.derived.mkdir(parents=True, exist_ok=True)
     with open(store.derived / "mistakes.jsonl", "w") as f:

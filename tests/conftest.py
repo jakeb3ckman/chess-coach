@@ -31,6 +31,11 @@ def engine_fixture(name):
     return game, analysis
 
 
+def engine_refutation(name):
+    """Refutation-pass output for an engine fixture (real Stockfish 19, 2M nodes)."""
+    return json.loads((FIX / "engine" / f"{name}.refutation.json").read_text())
+
+
 needs_engine = pytest.mark.skipif(not engine_path().exists(), reason="Stockfish not installed (tools/install_stockfish.sh)")
 
 

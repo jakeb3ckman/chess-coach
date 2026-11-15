@@ -1,8 +1,11 @@
-// Offline support. The app shell is cached per build; the card file is fetched
-// fresh when online (new cards arrive after each nightly run) and served from
-// cache when offline.
+// Offline support and updates.
+// - Page loads (navigations) go to the network first, so a new version reaches the
+//   installed Home Screen app on the next open; offline, the cached page is used.
+// - app.js / app.css carry the build id in their URL, so they are cached forever.
+// - The card file is fetched fresh when online (new cards arrive each night) and
+//   served from cache when offline.
 const VERSION = '__BUILD_ID__';
-const SHELL = ['./', 'index.html', 'app.js?v=' + VERSION, 'app.css?v=' + VERSION, 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
+const SHELL = ['./', 'app.js?v=' + VERSION, 'app.css?v=' + VERSION, 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 const CARDS = 'data/cards.json';
 
 self.addEventListener('install', (e) => {
@@ -15,15 +18,27 @@ self.addEventListener('activate', (e) => {
     .then(() => self.clients.claim()));
 });
 
+function withTimeout(p, ms) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('timeout')), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  if (e.request.mode === 'navigate') {
+    e.respondWith(withTimeout(fetch(e.request, { cache: 'no-cache' }), 4000)
+      .then((r) => { if (r.ok) { const copy = r.clone(); caches.open('shell-' + VERSION).then((c) => c.put('./', copy)); } return r; })
+      .catch(() => caches.match('./')));
+    return;
+  }
   if (url.pathname.endsWith('/' + CARDS)) {
     e.respondWith(fetch(e.request, { cache: 'no-cache' })
       .then((r) => { if (r.ok) { const copy = r.clone(); caches.open('data').then((c) => c.put(CARDS, copy)); } return r; })
       .catch(() => caches.open('data').then((c) => c.match(CARDS)).then((r) => r || Response.error())));
     return;
   }
-  e.respondWith(caches.match(e.request, { ignoreSearch: url.pathname.endsWith('/') || url.pathname.endsWith('index.html') })
-    .then((r) => r || fetch(e.request)));
+  e.respondWith(caches.match(e.request).then((r) => r || fetch(e.request)));
 });

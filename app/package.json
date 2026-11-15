@@ -1,6 +1,7 @@
 {
   "name": "chess-coach-app",
   "private": true,
+  "version": "2.2.1",
   "license": "GPL-3.0-only",
   "type": "module",
   "engines": {
