@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="robots" content="noindex, nofollow">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- maximum-scale=1: stops iOS zooming the page in when a text box is tapped. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#262421">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -20,10 +21,11 @@
 </head>
 <body>
 <div id="app">
-  <header id="bar"><div id="counts"></div><button id="menu" aria-label="Settings">⚙︎</button></header>
+  <header id="bar"><button id="menu" aria-label="Settings">⚙︎</button></header>
   <div id="hint" hidden></div>
   <div id="syncmsg" hidden></div>
   <main id="board-wrap"><div id="board"></div></main>
+  <div id="counts"></div>
   <div id="banner" class="prompt" aria-live="polite">Loading…</div>
   <section id="panel"><div id="info"></div><div id="actions"></div></section>
 </div>

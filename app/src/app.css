@@ -1,6 +1,10 @@
 /* Phone first. The board is exactly as wide as the screen's content area (never
    wider), centred, and nothing on the page scrolls sideways; only the panel below
    the board scrolls up and down. */
+/* Phone first. One column, as wide as the board: full screen width on a phone,
+   centred on a Mac. The board is the same size in every state; only the panel
+   below it scrolls. Nothing with text sits in the strip under the status bar,
+   except the settings gear. */
 :root {
   --bg: #262421;
   --panel: #302e2b;
@@ -9,13 +13,19 @@
   --ok: #3f8f3a;
   --bad: #c8463d;
   --accent: #629924;
-  --bar-h: 48px;
-  --banner-h: 46px;
+  --bar-h: 44px;
+  --side: 16px; /* text inset from the screen edge */
   /* Set by main.ts: the reported safe areas, or a fallback when iOS draws its
      frosted status-bar strip over the page but reports 0 (WebKit bug 301994). */
   --top-pad: env(safe-area-inset-top);
   --bottom-pad: env(safe-area-inset-bottom);
-  --board-shrink: 0px; /* main.ts shrinks the board after an answer if the lines don't fit */
+  /* Height the answer screen needs besides the board: top bar 44, thin counts
+     row 30, banner 46, best line + your move + refutation 150, Next button 70,
+     plus 4 to spare. The board gets whatever height is left, so the answer fits
+     without scrolling, and it keeps that size in the question state too. */
+  --reserve: 344px;
+  --board: max(200px, min(100vw - env(safe-area-inset-left) - env(safe-area-inset-right),
+    100dvh - var(--top-pad) - var(--bottom-pad) - var(--reserve), 640px));
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -27,38 +37,41 @@ html, body {
 }
 #app {
   display: flex; flex-direction: column; height: 100dvh; width: 100%;
-  max-width: 720px; margin: 0 auto;
+  max-width: calc(var(--board) + env(safe-area-inset-left) + env(safe-area-inset-right)); margin: 0 auto;
   /* Safe areas (notch, home indicator, rounded corners) in the Home Screen app.
      The bottom one is applied by #actions so the button sits just above the home indicator. */
   padding: var(--top-pad) env(safe-area-inset-right) 0 env(safe-area-inset-left);
 }
-#bar {
-  height: var(--bar-h); flex: none; display: flex; align-items: center; justify-content: space-between;
-  padding: 0 8px 0 10px; min-width: 0;
-}
-#counts { display: flex; gap: 6px; min-width: 0; flex: 1; }
-.cnt { flex: 1; display: flex; flex-direction: column; align-items: center; line-height: 1.1; font-size: 11px; color: var(--muted); min-width: 0; }
-.cnt b { font-size: 18px; font-variant-numeric: tabular-nums; color: var(--text); }
-.cnt.missed b { color: #ef6b61; }
-.cnt.unsure b { color: #e0b03c; }
-.cnt.known b { color: #7fbf4d; }
+/* The top strip holds only the gear. */
+#bar { height: var(--bar-h); flex: none; display: flex; align-items: center; justify-content: flex-end; padding: 0 4px; }
 #menu {
   flex: none; background: none; border: 0; color: var(--muted); font-size: 22px; width: 44px; height: 44px; cursor: pointer;
 }
+/* The four counts, directly under the board. Full tiles while a card is asked;
+   one thin row on the answer screen. Each tile's colour is --tile. */
+#counts { flex: none; display: flex; gap: 8px; padding: 8px var(--side); }
+.cnt { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; --tile: #45423e; }
+.cnt.missed { --tile: #9e3a33; }
+.cnt.unsure { --tile: #9a7420; }
+.cnt.known { --tile: #3c7a33; }
+.cnt .lbl { font-size: 12px; line-height: 16px; color: var(--muted); margin-bottom: 3px; white-space: nowrap; }
+.cnt b {
+  display: block; width: 100%; height: 36px; line-height: 36px; text-align: center; border-radius: 8px;
+  background: var(--tile); color: #fff; font-size: 19px; font-variant-numeric: tabular-nums;
+}
+#counts.thin { padding: 4px var(--side); gap: 6px; }
+#counts.thin .cnt { flex-direction: row-reverse; justify-content: center; gap: 4px; height: 22px; border-radius: 6px; background: var(--tile); }
+#counts.thin .lbl { margin: 0; color: #fff; opacity: .85; font-size: 11px; line-height: 22px; }
+#counts.thin b { width: auto; height: 22px; line-height: 22px; background: none; font-size: 13px; }
 #hint {
-  flex: none; margin: 0 8px 8px; padding: 10px 36px 10px 12px; position: relative;
+  flex: none; margin: 0 var(--side) 8px; padding: 10px 36px 10px 12px; position: relative;
   background: #4a3c1f; border-radius: 8px; font-size: 14px;
 }
 #hint button { position: absolute; right: 4px; top: 4px; background: none; border: 0; color: var(--text); font-size: 16px; width: 32px; height: 32px; }
 #board-wrap { flex: none; width: 100%; display: flex; justify-content: center; }
-#board {
-  /* 100% = the content width of #app, so the board can never stick out. */
-  width: calc(min(100%, calc(100dvh - var(--bar-h) - var(--banner-h) - 230px - var(--top-pad) - var(--bottom-pad)), 640px) - var(--board-shrink));
-  transition: width .15s;
-  aspect-ratio: 1; touch-action: none; position: relative;
-}
+#board { width: var(--board); aspect-ratio: 1; touch-action: none; position: relative; }
 #banner {
-  flex: none; min-height: var(--banner-h); display: flex; align-items: center; padding: 8px 14px;
+  flex: none; min-height: 46px; display: flex; align-items: center; padding: 8px var(--side);
   font-size: 17px; font-weight: 600; line-height: 1.25;
 }
 #banner.prompt { background: #f4f3f1; color: #1b1a19; }
@@ -68,8 +81,8 @@ html, body {
 /* Everything between the banner and the bottom button is the info area; the
    button area is pinned to the bottom, just above the home indicator. */
 #panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-#info { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8px 14px 4px; }
-#actions { flex: none; padding: 6px 14px calc(8px + var(--bottom-pad)); }
+#info { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 8px var(--side) 4px; }
+#actions { flex: none; padding: 6px var(--side) calc(8px + var(--bottom-pad)); }
 #actions:empty { display: none; }
 #actions .buttons { margin-top: 0; }
 #panel p { margin: 0 0 6px; }
@@ -112,8 +125,11 @@ button[disabled] { opacity: .5; }
 .seg button:last-child { border-radius: 0 8px 8px 0; }
 .seg button.on { background: var(--accent); border-color: var(--accent); }
 dialog h3 { font-size: 15px; margin: 14px 0 4px; }
-dialog input[type=text], dialog input[type=password] { width: 100%; height: 38px; border-radius: 8px; border: 1px solid #555; background: var(--bg); color: var(--text); padding: 0 10px; font: inherit; font-size: 15px; }
-#syncmsg { flex: none; margin: 0 8px 6px; padding: 8px 12px; background: #5a2420; border-radius: 8px; font-size: 14px; cursor: pointer; }
+dialog input[type=text], dialog input[type=password] { width: 100%; height: 38px; border-radius: 8px; border: 1px solid #555; background: var(--bg); color: var(--text); padding: 0 10px; font: inherit; font-size: 16px; }
+/* 16px, not less: iOS zooms the whole page in (by 16/font-size) when a smaller
+   text box is tapped, and a Home Screen app has no way to zoom back out. */
+#sync-token { -webkit-text-security: disc; }
+#syncmsg { flex: none; margin: 0 var(--side) 6px; padding: 8px 12px; background: #5a2420; border-radius: 8px; font-size: 14px; cursor: pointer; }
 .link { background: none; border: 0; color: #8fb3e0; font: inherit; font-size: 15px; padding: 10px; }
 #promo { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 10; }
 #promo[hidden] { display: none; }

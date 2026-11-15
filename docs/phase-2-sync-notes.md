@@ -1,8 +1,8 @@
-# Phase 2 sync notes (trainer 2.2.2 and sync 2.3.0)
+# Phase 2 sync notes (trainer 2.2.2, sync 2.3.0, layout fix 2.3.1)
 
 Date: 2026-11-15. Scope: Part A (trainer fixes, deployed as **2.2.2**) and Part B (sync between iPhone and Mac, deployed as **2.3.0**). Not started: the opening report, the insights page, multi-move puzzles.
 
-**Live:** https://jakeb3ckman.github.io/chess-coach/. Settings shows **Version 2.3.0**.
+**Live:** https://jakeb3ckman.github.io/chess-coach/. Settings shows **Version 2.3.1** (layout fix round, section 8).
 
 **Your reviews:** they survived both updates. Each update migrates the existing data; nothing is reset (section 3).
 
@@ -247,3 +247,68 @@ The easiest way to get it onto the phone: do steps B1–B8 in Safari on the iPho
 4. **Two tag edge cases** (section 2.7): 65 hung-piece cards without `loses material`, and 18 lines that end mid-exchange. Both follow the rules as written. Extending the lines would mean storing longer engine lines.
 
 Sync is built; this round stops here.
+
+## 8. Layout fix round (2.3.1)
+
+Date: 2026-11-15. Deployed as **2.3.1**. Layout only: nothing changed in scheduling, sets, tags, the event format, storage or sync. No migration was needed; your reviews and sync settings carry over as they are.
+
+### 8.1 What changed
+
+| # | Request | Result |
+|---|---|---|
+| 1 | Counts under the board | Four coloured tiles directly under the board, labelled Remaining, Missed, Unsure and Known. Full tiles while a card is asked; one thin row on the answer screen. The top strip now holds only the gear |
+| 2 | Find the cause | Found: iOS had zoomed the page in (8.2). Fixed at the source |
+| 3 | Side padding | 16 px on both sides for the banner, the text and the buttons; the board stays edge to edge |
+| 4 | One board size | The board is the same size in both states. Its size comes from the screen height minus what the answer screen needs, so the answer always fits. It is full width on every current iPhone |
+| 5 | Token field | Now a plain text box with masked characters, marked for password managers to ignore. Safari only offers to save passwords from real password fields |
+| 6 | Mac layout | Everything sits in one centred column as wide as the board |
+
+### 8.2 The cause: page zoom, not the safe area
+
+**Why the page was 377 wide on a 402-wide screen:** 377 = 402 × 15⁄16. The 2.3.0 token box used 15 px text. When you tap a text box whose text is smaller than 16 px, iOS zooms the whole page in so the text appears at 16 px, a zoom of 16⁄15. A Home Screen app has no way to zoom back out, and iOS keeps the zoom across reloads, so it stayed. Your screenshots match:
+- the board's middle squares measure 1.067 times their normal size;
+- the outer files of the board are cut off;
+- the 14 px text margin was pushed off screen, which is why "Black to move" touched the left edge;
+- the board looked bigger in the question state because the old answer-screen shrink made it smaller there.
+
+This was the app's bug. Fixes:
+- the text boxes now use 16 px text;
+- the page's viewport rule forbids that zoom (`maximum-scale=1`);
+- on start-up and when Settings closes, the app resets any zoom still in place.
+
+**Why switching Automatic to Always changed nothing:** iOS already reports 62 px of top space on your phone, so both settings used 62 px.
+
+**The fuzzy numbers:**
+- **The app's own styling is ruled out.** The numbers and the gear had no shadow, filter, transform, opacity, animation or layer hint.
+- **Fractional scaling was present** (the 16⁄15 zoom). It scaled the whole page evenly, though, so it doesn't explain fuzzy numbers above sharp labels in the same element.
+- **The likely cause is iOS.** Its frosted top-edge effect is strongest at the top and fades out a little below the reported safe area. In your screenshot that is where the numbers sat (about 83–95 pt from the top), with the labels just below (97–109 pt).
+- I can't confirm this without your phone, but the counts are out of that zone now either way. Nothing with text sits there.
+
+### 8.3 Checks (Chrome, iPhone sizes, your phone's 62 px top / 34 px bottom applied)
+
+Positions are in points from the top of the screen. "Spare" is the gap between the end of the answer lines and the top of the Next area.
+
+| Screen | Board (same in both states) | Counts row: question / answer | Answer lines fit | Spare |
+|---|---|---|---|---|
+| 375×812 | 372 wide, y 106–478 | y 478–549 / 478–508 | yes | 4–6 px |
+| 390×844 | 390 wide, y 106–496 | 496–567 / 496–526 | yes | 18 px |
+| 393×852 | 393 wide, y 106–499 | 499–570 / 499–529 | yes | 23 px |
+| 402×874 | 402 wide, y 106–508 | 508–579 / 508–538 | yes | 38 px |
+| 430×932 | 430 wide, y 106–536 | 536–607 / 536–566 | yes | 66 px |
+| Mac, 1280×800 window | 456 wide, centred | banner, text and buttons in the same 456 px column | yes | |
+
+- Nothing scrolled sideways at any width. The 26 app tests pass.
+- The 375 row used your phone's 62 px top. Real 375-wide iPhones report less top space, so the board is full width on them.
+- To make the 375 case fit, the win% line moved just below the three must-see items. At 402 it is still visible above Next; on smaller screens it may need a short scroll.
+
+**New diagnostics** (Settings > Space at the top), in addition to the old ones:
+- the zoom: it should read 1.000, and says "zoomed in!" otherwise;
+- where the board and the counts row are on screen;
+- for the last answer screen: where the lines end, where Next starts, and whether they fit.
+
+### 8.4 What I couldn't test without your phone
+
+1. **Whether the zoom reset clears the zoom your phone has now.** Chrome can't produce iOS's input zoom. The 16 px boxes stop it happening again. If Settings still shows a zoom above 1.000 after the update, close the app fully (swipe it away in the app switcher) and reopen it once.
+2. **Whether the gear still looks soft.** It is the only thing left in the top strip, as you asked.
+3. **The Mac's "Save Password?" prompt.** It should no longer appear, because the page has no password field. I checked the field type, masking and attributes, not Safari's prompt itself.
+4. **The real top and bottom space on iOS 27.2.1.** The checks above simulate 62/34, the numbers your Settings screen reported.

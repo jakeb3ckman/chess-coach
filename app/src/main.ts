@@ -85,9 +85,11 @@ function applySafeArea() {
   const envBottom = parseFloat(cs.paddingBottom) || 0;
   probe.remove();
   const standalone = isStandalone();
-  const portrait = innerHeight >= innerWidth;
+  // The layout viewport, which page zoom doesn't change (innerWidth/innerHeight do).
+  const w = document.documentElement.clientWidth, h = document.documentElement.clientHeight;
+  const portrait = h >= w;
   const screenH = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
-  const full = standalone && Math.abs(innerHeight - screenH) <= 2;
+  const full = standalone && Math.abs(h - screenH) <= 2;
   let mode = 'auto';
   try { mode = localStorage.getItem('topSpace') ?? 'auto'; } catch { /* private mode */ }
   const fix = mode === 'on' || (mode === 'auto' && full && envTop < 20);
@@ -96,6 +98,36 @@ function applySafeArea() {
   document.documentElement.style.setProperty('--top-pad', `${top}px`);
   document.documentElement.style.setProperty('--bottom-pad', `${bottom}px`);
   safeArea = { envTop, envBottom, full, standalone, mode, top, bottom };
+}
+
+/**
+ * iOS zooms the whole page in when a text box with text under 16px is tapped,
+ * and a Home Screen app keeps that zoom (also across reloads). 2.3.0's token box
+ * had 15px text, so after entering the token the page sat zoomed in by 16/15:
+ * 377 of 402 points visible, edges cut off. Inputs are now 16px and the viewport
+ * has maximum-scale=1; this also undoes a zoom that is still in place.
+ */
+function resetZoom() {
+  const vv = window.visualViewport;
+  if (!vv || Math.abs(vv.scale - 1) < 0.01) return;
+  const meta = document.querySelector<HTMLMetaElement>('meta[name=viewport]');
+  if (!meta) return;
+  const c = meta.content;
+  // Changing the viewport rule makes WebKit re-apply it, which clamps the zoom to 1.
+  meta.content = 'width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, viewport-fit=cover';
+  setTimeout(() => { meta.content = c; }, 400);
+}
+
+function zoomText(): string {
+  const vv = window.visualViewport;
+  return vv ? `${vv.scale.toFixed(3)}${Math.abs(vv.scale - 1) >= 0.01 ? ' (zoomed in!)' : ''}` : 'unknown';
+}
+
+function rectText(sel: string): string {
+  const el = document.querySelector(sel);
+  if (!el) return 'not on screen';
+  const r = el.getBoundingClientRect();
+  return `x ${Math.round(r.left)}–${Math.round(r.right)}, y ${Math.round(r.top)}–${Math.round(r.bottom)}`;
 }
 
 // ---------- start-up, updates, migration
@@ -150,6 +182,7 @@ async function migrate(db: IDBDatabase, sched: Scheduler, byId: Map<string, AppC
 }
 
 async function start() {
+  resetZoom();
   applySafeArea();
   addEventListener('resize', () => applySafeArea());
   setupServiceWorker();
@@ -259,7 +292,8 @@ async function syncSettingsHtml(): Promise<string> {
     <label class="muted small">Private repository (owner/name)
       <input type="text" id="sync-repo" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(cfg?.repo ?? 'jakeb3ckman/chess-coach-progress')}"></label>
     <label class="muted small">Token ${cfg ? `(saved, ends …${esc(cfg.token.slice(-4))}; paste a new one to replace it)` : ''}
-      <input type="password" id="sync-token" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…"></label>
+      <input type="text" id="sync-token" name="sync-key" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+        data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" placeholder="github_pat_…"></label>
     ${devApi}
     <div class="buttons">
       <button id="sync-save" class="primary">${cfg ? 'Save and sync' : 'Turn on sync'}</button>
@@ -362,8 +396,13 @@ async function ensureToday() {
 
 function renderCounts() {
   const c = counts(app.set);
-  const chip = (s: Status, label: string) => `<span class="cnt ${s}"><b>${c[s]}</b> ${label}</span>`;
-  $('#counts').innerHTML = chip('remaining', 'Remaining') + chip('missed', 'Missed') + chip('unsure', 'Unsure') + chip('known', 'Known');
+  const tile = (s: Status, label: string) => `<div class="cnt ${s}"><span class="lbl">${label}</span><b>${c[s]}</b></div>`;
+  $('#counts').innerHTML = tile('remaining', 'Remaining') + tile('missed', 'Missed') + tile('unsure', 'Unsure') + tile('known', 'Known');
+}
+
+/** Full tiles while a card is asked; one thin row on the answer screen. */
+function countsThin(on: boolean) {
+  $('#counts').classList.toggle('thin', on);
 }
 
 async function showNext() {
@@ -377,7 +416,7 @@ async function showNext() {
 
 function idleBoard() {
   app.sh = undefined;
-  setBoardShrink(0);
+  countsThin(false);
   app.cg.set({ viewOnly: true, movable: { color: undefined, dests: new Map() }, drawable: { autoShapes: [] } });
 }
 
@@ -453,10 +492,6 @@ async function finishLater() {
 
 // ---------- one showing
 
-function setBoardShrink(px: number) {
-  document.documentElement.style.setProperty('--board-shrink', `${Math.max(0, Math.round(px))}px`);
-}
-
 let firstScreenMarked = false;
 function markFirstScreen() {
   if (firstScreenMarked) return;
@@ -466,7 +501,7 @@ function markFirstScreen() {
 
 function showCard(card: AppCard) {
   markFirstScreen();
-  setBoardShrink(0);
+  countsThin(false);
   const n = (app.set.showings[card.id] ?? 0) + 1;
   const st = app.states.get(card.id);
   app.sh = {
@@ -657,6 +692,7 @@ async function showAnswer() {
   const g = card.game;
   const gameSan = sanOf(card.fen, g.move);
   const st = app.states.get(card.id);
+  countsThin(true);
   if (sh.revealed) banner('revealed', `Solution: <b>${esc(best)}</b>`);
   else if (!sh.failed) banner('done', `✓ Solved: ${esc(best)}`);
   else banner('done', `✓ Solved: ${esc(best)} <span class="sub">(counts as missed)</span>`);
@@ -675,8 +711,8 @@ async function showAnswer() {
       <div class="moves">${lineChips('best')}</div>
       <div class="row"><span class="what">You played <b>${esc(gameSan)}</b>${sh.lines.ref.length ? ', refuted by' : ''}</span><span class="ev">${esc(evalWords(g.eval))}</span></div>
       ${refChips}
-      <p class="muted small">Pawns from your side. Win% ${g.win_before.toFixed(1)} → ${g.win_after.toFixed(1)} (−${drop})${card.occ.length > 1 ? ` · missed in ${card.occ.length} games` : ''}</p>
     </div>
+    <p class="muted small">Pawns from your side. Win% ${g.win_before.toFixed(1)} → ${g.win_after.toFixed(1)} (−${drop})${card.occ.length > 1 ? ` · missed in ${card.occ.length} games` : ''}</p>
     ${tags.length ? `<p class="tags">${tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</p>` : ''}
     <div class="stepper"><button class="step" id="start" aria-label="Back to the puzzle">↺</button><button class="step" id="prev" aria-label="Back">◀</button><button class="step" id="next" aria-label="Forward">▶</button></div>
     <p class="links"><a href="${esc(card.occ[0].link)}" target="_blank" rel="noopener">Open the game ↗</a><a href="${esc(analysis)}" target="_blank" rel="noopener">Analysis board ↗</a></p>`;
@@ -688,21 +724,19 @@ async function showAnswer() {
   $('#next').addEventListener('click', () => view(sh.view.line, sh.view.idx + 1));
   await renderGradeButtons();
   view('best', sh.revealed || sh.failed ? -1 : 0);
-  fitEssential();
+  requestAnimationFrame(measureAnswer);
 }
 
-/** If the lines don't fit above the pinned button, shrink the board a little
- * (never below 260 px) rather than hiding lines. */
-function fitEssential() {
-  requestAnimationFrame(() => {
-    const info = $('#info');
-    const ess = $('#essential');
-    if (!info || !ess) return;
-    const overflow = ess.getBoundingClientRect().bottom - info.getBoundingClientRect().bottom + 4;
-    if (overflow <= 0) return;
-    const board = $('#board').getBoundingClientRect().width;
-    setBoardShrink(Math.min(overflow, Math.max(0, board - 260)));
-  });
+/** Where the answer screen's lines end and the Next button starts, for the
+ * Settings diagnostics (the board no longer shrinks to make room). */
+let answerFit = '';
+function measureAnswer() {
+  const ess = document.getElementById('essential');
+  const act = document.getElementById('actions');
+  if (!ess || !act) return;
+  const end = Math.round(ess.getBoundingClientRect().bottom);
+  const next = Math.round(act.getBoundingClientRect().top);
+  answerFit = `lines end at y=${end}, Next area starts at y=${next} (${end <= next ? 'fits' : `${end - next}px hidden, scroll to see`})`;
 }
 
 async function renderGradeButtons() {
@@ -827,7 +861,11 @@ async function openSettings() {
     ${extra}
     <h3>Space at the top</h3>
     <p class="muted small">Keeps the top bar out of the blurred strip under the status bar.
-      Measured: page ${innerWidth}×${innerHeight}, screen ${screen.width}×${screen.height}, reported safe area top ${sa.envTop}px / bottom ${sa.envBottom}px${sa.full ? ', page runs under the status bar' : ''}. Using ${sa.top}px top, ${sa.bottom}px bottom.</p>
+      Measured: page ${document.documentElement.clientWidth}×${document.documentElement.clientHeight}, screen ${screen.width}×${screen.height},
+      zoom ${zoomText()}, reported safe area top ${sa.envTop}px / bottom ${sa.envBottom}px${sa.full ? ', page runs under the status bar' : ''}.
+      Using ${sa.top}px top, ${sa.bottom}px bottom.<br>
+      Board: ${rectText('#board')}. Counts row: ${rectText('#counts')}.
+      Answer screen: ${answerFit || 'not shown yet since the app opened'}.</p>
     <div class="seg" id="topspace">
       ${['auto', 'on', 'off'].map((m) => `<button data-m="${m}" class="${sa.mode === m ? 'on' : ''}">${m === 'auto' ? 'Automatic' : m === 'on' ? 'Always' : 'Never'}</button>`).join('')}
     </div>
@@ -840,6 +878,7 @@ async function openSettings() {
     <p id="restore-msg" class="muted small"></p>
     <div class="buttons"><button id="close" class="primary">Close</button></div>`;
   $('#close').addEventListener('click', () => dlg.close());
+  dlg.addEventListener('close', resetZoom, { once: true });
   $('#backup').addEventListener('click', saveBackup);
   $('#restore').addEventListener('click', () => $<HTMLInputElement>('#restore-file').click());
   $<HTMLInputElement>('#restore-file').addEventListener('change', (e) => restoreBackup((e.target as HTMLInputElement).files?.[0]));
