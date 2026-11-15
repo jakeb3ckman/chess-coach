@@ -14,6 +14,8 @@ import chess
 
 from .classify import card_exclusions, label, win_pct
 from .tags import TAG_ORDER, eval_text, tags_for
+from .insights import build_insights, load_games
+from .openings import build_openings
 from .store import Store
 
 
@@ -188,6 +190,20 @@ def build_all(store: Store, settings: dict, app_out=None) -> dict:
         for m in mistakes:
             f.write(json.dumps(m, separators=(",", ":")) + "\n")
     Store.write_json_atomic(store.derived / "cards.json", cards)
+    # Phase 3: the Openings and Insights screens, and leak cards (deck 'opening').
+    tactic_epds = {chess.Board(c["fen"]).epd() for c in cards}
+    analyzed = [g for g in store.iter_games() if store.has_analysis(g)]
+    openings, leak_cards = build_openings(analyzed, store.data, settings, tactic_epds)
+    insights = build_insights(load_games(store), mistakes, settings)
+    Store.write_json_atomic(store.derived / "openings.json", openings)
+    Store.write_json_atomic(store.derived / "insights.json", insights)
     if app_out is not None:
-        Store.write_json_atomic(Path(app_out), app_cards(cards))
-    return {"games": n_games, "analyzed": n_analyzed, "mistakes": len(mistakes), "cards": len(cards)}
+        app = app_cards(cards)
+        app["cards"] = leak_cards + app["cards"]  # leak cards first; the app takes at most 3 new ones a day
+        app["opening_rules"] = {k: settings["openings"][k] for k in ("right_within", "playable_within", "leak_cards_per_day")}
+        Store.write_json_atomic(Path(app_out), app)
+        Store.write_json_atomic(Path(app_out).with_name("app-openings.json"), openings)
+        Store.write_json_atomic(Path(app_out).with_name("app-insights.json"), insights)
+    return {"games": n_games, "analyzed": n_analyzed, "mistakes": len(mistakes), "cards": len(cards),
+            "leaks": len(openings["leaks"]), "leak_cards": len(leak_cards),
+            "insight_lines": sum(1 for x in insights["lines"] if x["status"] == "shown")}

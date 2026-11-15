@@ -98,3 +98,250 @@ def opp_move_drop(i: int, mv: str, opp: str, p1: list) -> float:
     if mv == p1[i][1]:
         return 0.0
     return max(0.0, win_pct(p1[i][0], opp) - win_pct(p1[i + 1][0], opp))
+
+
+# ---------------------------------------------------------------- nightly build
+
+def _res(rs) -> dict:
+    c = Counter(rs)
+    n = len(rs)
+    return {"n": n, "w": c["win"], "d": c["draw"], "l": c["loss"],
+            "score": round(100 * sum(score_of(r) for r in rs) / n, 1) if n else None}
+
+
+def _expected(g: dict) -> float | None:
+    me = g["my_color"]
+    opp = "black" if me == "white" else "white"
+    a, b = g[me].get("rating"), g[opp].get("rating")
+    return 1 / (1 + 10 ** ((b - a) / 400)) if a and b else None
+
+
+def trend_blocks(games: list[dict], block: int) -> list[dict]:
+    """Rating-adjusted score over time: games oldest first, in blocks of `block`;
+    a last block shorter than half a block joins the one before it. Per block:
+    score, expected score (Elo formula on the two stored ratings) and their
+    difference with a 95% interval (mean +- 1.96 standard errors)."""
+    import math
+    gs = sorted((g for g in games if _expected(g) is not None), key=lambda g: g["ended_at"])
+    chunks = [gs[i:i + block] for i in range(0, len(gs), block)]
+    if len(chunks) > 1 and len(chunks[-1]) < block / 2:
+        chunks[-2].extend(chunks.pop())
+    out = []
+    for ch in chunks:
+        r = [score_of(g["my_result"]) - _expected(g) for g in ch]
+        m = sum(r) / len(r)
+        sd = math.sqrt(sum((x - m) ** 2 for x in r) / (len(r) - 1)) if len(r) > 1 else 0.0
+        h = 1.96 * sd / math.sqrt(len(r))
+        out.append({"from": ch[0]["ended_at"][:10], "to": ch[-1]["ended_at"][:10], "games": len(ch),
+                    "score": round(100 * sum(score_of(g["my_result"]) for g in ch) / len(ch), 1),
+                    "expected": round(100 * sum(_expected(g) for g in ch) / len(ch), 1),
+                    "diff": round(100 * m, 1), "lo": round(100 * (m - h), 1), "hi": round(100 * (m + h), 1)})
+    return out
+
+
+def node_key(color: str, epd: str) -> str:
+    import hashlib
+    return hashlib.sha1(f"{color}|{epd}".encode()).hexdigest()[:12]
+
+
+def game_link_at(g: dict, ply: int) -> str:
+    if g["site"] == "lichess":
+        return f"{g['url']}/{g['my_color']}#{ply}"
+    return g["url"]
+
+
+def _san_path(moves: list[str], upto: int) -> str:
+    b = chess.Board()
+    out = []
+    for i, mv in enumerate(moves[:upto]):
+        m = chess.Move.from_uci(mv)
+        s = b.san(m)
+        out.append(f"{i // 2 + 1}.{s}" if i % 2 == 0 else (f"{i // 2 + 1}...{s}" if not out else s))
+        b.push(m)
+    return " ".join(out)
+
+
+def move_scores(pos: dict) -> dict[str, dict]:
+    """From a position-pass record: uci -> {score, pv} for every searched move
+    (the top-5 lines and the extra restricted searches)."""
+    out = {}
+    for score, _depth, pv in pos["lines"]:
+        if pv:
+            out[pv.split()[0]] = {"score": score, "pv": pv}
+    for mv, e in pos.get("extra", {}).items():
+        out.setdefault(mv, {"score": e["score"], "pv": e["pv"]})
+    return out
+
+
+def build_openings(games: list[dict], data_dir: Path, settings: dict, tactic_epds: set[str]) -> tuple[dict, list[dict]]:
+    """Everything the Openings screen shows, plus the leak cards.
+    games: game dicts (as stored). Returns (openings.json content, leak cards
+    in the app's card format, ordered by total Win% lost)."""
+    from .positions import load_position
+    from .tags import eval_text
+    os_ = settings["openings"]
+    ps = settings["positions"]
+    max_ply = ps["max_ply"]
+
+    for g in games:
+        g["_m"] = g["moves"].split()
+        g["_name"] = name_game(g["_m"])
+
+    # ---- repertoire groups
+    groups_out = {}
+    table = opening_table()
+    name_pos = {}  # opening name -> epd of its table line
+    for epd, (_eco, name, _n) in table.items():
+        name_pos.setdefault(name, epd)
+    for color in ("white", "black"):
+        gs = [g for g in games if g["my_color"] == color]
+        vcount = Counter(variation(g["_name"][1]) for g in gs if g["_name"])
+        groups = defaultdict(list)
+        for g in gs:
+            if not g["_name"]:
+                groups[("(no name)", None)].append(g)
+                continue
+            v = variation(g["_name"][1])
+            fam = family(g["_name"][1])
+            groups[(v, v) if vcount[v] >= os_["group_min_games"] else (f"{fam} (other lines)", fam)].append(g)
+        rows = []
+        for (label, anchor), gg in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+            epd = name_pos.get(anchor) if anchor else None
+            row = {"name": label, "family": family(label.replace(" (other lines)", "")), **_res([g["my_result"] for g in gg]),
+                   "tc": {tc: _res([g["my_result"] for g in gg if g["time_class"] == tc])
+                          for tc in ("bullet", "blitz", "rapid")},
+                   "node": node_key(color, epd) if epd else None, "eco": gg[0]["_name"][0] if gg[0]["_name"] else None}
+            if len(gg) >= os_["trend_min_games"]:
+                row["trend"] = trend_blocks(gg, os_["trend_block"])
+            rows.append(row)
+        groups_out[color] = rows
+
+    # ---- move tree: positions in my first 15 moves (both sides to move) reached >= tree_min_games times
+    occ = defaultdict(list)  # (color, epd) -> [(game, ply)]
+    for g in games:
+        b = chess.Board()
+        for i, mv in enumerate(g["_m"][:max_ply]):
+            occ[(g["my_color"], b.epd())].append((g, i))
+            b.push_uci(mv)
+    keep = {k for k, v in occ.items() if len({x[0]["id"] for x in v}) >= os_["tree_min_games"]}
+    nodes = {}
+    leaks = []
+    cards = []
+    for (color, epd) in keep:
+        oo = occ[(color, epd)]
+        g0, i0 = max(oo, key=lambda x: x[0]["ended_at"])
+        b = chess.Board()
+        for mv in g0["_m"][:i0]:
+            b.push_uci(mv)
+        me_to_move = (b.turn == chess.WHITE) == (color == "white")
+        by_move = defaultdict(list)
+        for g, i in oo:
+            by_move[g["_m"][i]].append((g, i))
+        moves = []
+        for mv, xs in sorted(by_move.items(), key=lambda kv: -len(kv[1])):
+            nb = b.copy()
+            nb.push_uci(mv)
+            child = (color, nb.epd())
+            moves.append({"u": mv, "s": b.san(chess.Move.from_uci(mv)), **_res([g["my_result"] for g, _ in xs]),
+                          "to": node_key(*child) if child in keep else None})
+        name = name_game(g0["_m"][:i0])
+        node = {"fen": b.fen(), "color": color, "me": me_to_move, "games": len({g["id"] for g, _ in oo}),
+                "path": _san_path(g0["_m"], i0), "name": name[1] if name else None, "moves": moves[:10]}
+        if me_to_move:
+            usual = moves[0]
+            alts = [m for m in moves[1:] if m["n"] >= os_["alt_min_games"] and m["score"] > usual["score"]]
+            if alts and usual["n"] >= os_["alt_min_games"]:
+                best_alt = max(alts, key=lambda m: m["score"])
+                node["compare"] = {"usual": usual["u"], "alt": best_alt["u"]}
+            pos = load_position(data_dir, epd) if node["games"] >= ps["min_games"] else None
+            if pos:
+                sc = move_scores(pos)
+                best_score = pos["lines"][0][0]
+                wb = win_pct(best_score, color)
+                behind = {u: round(wb - win_pct(v["score"], color), 1) for u, v in sc.items()}
+                if node["games"] >= os_["engine_top_min_games"]:
+                    node["engine"] = [{"u": pv.split()[0], "s": b.san(chess.Move.from_uci(pv.split()[0])),
+                                       "behind": behind[pv.split()[0]], "eval": eval_text(score, color)}
+                                      for score, _d, pv in pos["lines"][:3] if pv]
+                for m in moves:
+                    if m["u"] in behind:
+                        m["behind"] = behind[m["u"]]
+                # ---- leaks at this position
+                best_u = pos["lines"][0][2].split()[0]
+                for m in moves:
+                    if m["n"] < ps["min_played_for_extra"] or m["u"] not in behind:
+                        continue
+                    drop = behind[m["u"]]
+                    if drop < os_["leak_min_drop"] or not (10 <= wb <= 90):
+                        continue
+                    xs = by_move[m["u"]]
+                    best_rec = [r for r in moves if r["u"] == best_u]
+                    kind = "error" if drop >= os_["leak_error_drop"] else "repertoire"
+                    lk = {"node": node_key(color, epd), "color": color, "path": node["path"], "name": node["name"],
+                          "fen": b.fen(), "kind": kind, "move": m["u"], "move_san": m["s"], "best": best_u,
+                          "best_san": b.san(chess.Move.from_uci(best_u)), "drop": drop, "played": m["n"],
+                          "reached": node["games"], "total": round(drop * m["n"], 1),
+                          "mine": {k: m[k] for k in ("n", "w", "d", "l", "score")},
+                          "best_rec": {k: best_rec[0][k] for k in ("n", "w", "d", "l", "score")} if best_rec else _res([]),
+                          "links": [game_link_at(g, i) for g, i in sorted(xs, key=lambda x: x[0]["ended_at"], reverse=True)[:3]],
+                          "card": None}
+                    if kind == "error":
+                        right = [u for u, d in behind.items() if d <= os_["right_within"]]
+                        top_complete = len(pos["lines"]) < ps["multipv"] or behind[pos["lines"][-1][2].split()[0]] > os_["right_within"]
+                        if top_complete and epd not in tactic_epds and m["u"] not in right:
+                            card = _leak_card(b, epd, color, pos, sc, behind, m["u"], xs, os_, eval_text)
+                            lk["card"] = card["id"]
+                            cards.append((lk["total"], card))
+                    leaks.append(lk)
+        nodes[node_key(color, epd)] = node
+
+    replies = []
+    for (color, epd) in keep:
+        n = nodes[node_key(color, epd)]
+        if n["me"] or n["games"] < 20:
+            continue
+        for m in n["moves"]:
+            replies.append({"color": color, "after": n["path"] or "(start)", "node": node_key(color, epd),
+                            "reply": m["s"], "of": n["games"], **{k: m[k] for k in ("n", "w", "d", "l", "score")},
+                            "to": m["to"]})
+    replies.sort(key=lambda r: -r["n"])
+    leaks.sort(key=lambda r: -r["total"])
+    cards.sort(key=lambda tc: -tc[0])
+    starts = {c: node_key(c, chess.Board().epd()) for c in ("white", "black")}
+    out = {"format": 1, "games": len(games), "groups": groups_out, "replies": replies[:30], "leaks": leaks,
+           "nodes": nodes, "start": starts,
+           "rules": {k: os_[k] for k in ("leak_min_drop", "leak_error_drop", "right_within", "playable_within",
+                                          "group_min_games", "trend_block")}}
+    return out, [c for _, c in cards]
+
+
+def _leak_card(b: chess.Board, epd: str, color: str, pos: dict, sc: dict, behind: dict, leak: str,
+               xs: list, os_: dict, eval_text) -> dict:
+    """A leak card in the app's card format (deck 'opening')."""
+    import hashlib
+    from .classify import label as label_of
+    best_score, _d, best_pv = pos["lines"][0]
+    g, i = max(xs, key=lambda x: x[0]["ended_at"])
+    mine = sc[leak]
+    ref = " ".join(mine["pv"].split()[1:]) or None
+    labels = {"inaccuracy": 5.0, "mistake": 10.0, "blunder": 15.0}
+    return {
+        "id": hashlib.sha1(f"{epd}|leak".encode()).hexdigest()[:12],
+        "deck": "opening",
+        "fen": b.fen(),
+        "solution": best_pv.split()[0],
+        "line": best_pv,
+        "color": color,
+        "prev": g["_m"][i - 1] if i > 0 else None,
+        "tags": (["opening"] if b.fullmove_number <= 10 else []) + ["repeated opening error"],
+        "best_eval": eval_text(best_score, color),
+        "game": {"move": leak, "eval": eval_text(mine["score"], color), "refutation": ref,
+                 "win_before": round(win_pct(best_score, color), 1), "win_after": round(win_pct(mine["score"], color), 1),
+                 "move_number": b.fullmove_number},
+        "occ": [{"link": game_link_at(gg, ii), "site": gg["site"], "move": leak, "drop": behind[leak],
+                 "label": label_of(behind[leak], labels), "tc": gg["time_class"], "at": gg["ended_at"][:10]}
+                for gg, ii in sorted(xs, key=lambda x: x[0]["ended_at"], reverse=True)],
+        "right": sorted((u for u, d in behind.items() if d <= os_["right_within"]), key=lambda u: behind[u]),
+        "alts": [{"u": u, "behind": behind[u], "eval": eval_text(sc[u]["score"], color)}
+                 for u in sorted(behind, key=lambda u: behind[u])],
+    }

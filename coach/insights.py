@@ -51,6 +51,8 @@ def load_games(store) -> list[dict]:
     """One record per game with per-move facts, oldest first by start time."""
     out = []
     for g in store.iter_games():
+        if not store.analysis_path(g).exists():
+            continue  # not analyzed yet; it joins the insights the night it is
         with open(store.analysis_path(g)) as f:
             a = json.load(f)
         p1, p2 = a["p1"], a.get("p2", {})
@@ -305,3 +307,220 @@ def one_move_errors(mistakes: list[dict]) -> dict:
         c["total"] = len(ms)
         out[group] = c
     return out
+
+
+# ---------------------------------------------------------------- nightly build
+
+UNDECIDED = (10.0, 90.0)
+BOOT = 1000          # resamples of whole games for move-level intervals
+BOOT_SEED = 20261115  # fixed, so the nightly file is identical for identical data
+
+
+def _undecided(m: dict) -> bool:
+    return UNDECIDED[0] <= m["wb"] <= UNDECIDED[1]
+
+
+def boot_diff(a: list[tuple[int, int]], b: list[tuple[int, int]]) -> tuple[float, float, float]:
+    """Difference of two pooled rates (events / items), each group given as one
+    (events, items) pair per game, with a 95% interval from resampling whole
+    games (so moves of one game stay together)."""
+    import random
+    rng = random.Random(BOOT_SEED)
+
+    def pooled(xs):
+        n = sum(x[1] for x in xs)
+        return sum(x[0] for x in xs) / n if n else 0.0
+    d0 = pooled(a) - pooled(b)
+    ds = sorted(pooled(rng.choices(a, k=len(a))) - pooled(rng.choices(b, k=len(b))) for _ in range(BOOT))
+    return d0, ds[int(0.025 * BOOT)], ds[int(0.975 * BOOT) - 1]
+
+
+def _per_game(games, tc=None, test=lambda m: True, event=lambda m: m["drop"] >= 15):
+    out = []
+    for g in games:
+        if tc and g["tc"] != tc:
+            continue
+        ms = [m for m in g["mine"] if _undecided(m) and test(m)]
+        if ms:
+            out.append((sum(1 for m in ms if event(m)), len(ms)))
+    return out
+
+
+def _f(x: float, nd: int = 1) -> str:
+    return f"{x:.{nd}f}"
+
+
+def _resid_ci(gs: list[dict]) -> tuple[int, float, float, float]:
+    r = [{"win": 1, "draw": .5, "loss": 0}[g["result"]] - g["expected"] for g in gs if g["expected"] is not None]
+    if len(r) < 2:
+        return len(r), 0.0, 0.0, 0.0
+    m = sum(r) / len(r)
+    sd = math.sqrt(sum((x - m) ** 2 for x in r) / (len(r) - 1))
+    h = 1.96 * sd / math.sqrt(len(r))
+    return len(r), 100 * m, 100 * (m - h), 100 * (m + h)
+
+
+TIPS = {
+    "danger": "Your games most often turn just after the opening. When development is done, slow down and check every capture and check before you move.",
+    "gifts": "When your opponent's move surprises you, first ask what it leaves undefended or allows.",
+    "thrown": "When you're winning, trade pieces, keep your king safe, and watch the clock: a won position still has to be finished in time.",
+    "several": "Most blunders here weren't hard positions. Before each move, check what the moved piece leaves undefended and whether it can be taken.",
+    "tc": "In rapid you have time for a blunder check on every move: what does my move leave undefended, and what are their checks and captures?",
+    "tilt": "After two losses in a row, take a short break before the next game.",
+    "gameno": "Notice when in a session your results change, and stop before that point.",
+    "hour": "Play your important games at the time of day your results are best.",
+}
+
+
+def build_insights(games: list[dict], mistakes: list[dict], settings: dict) -> dict:
+    """The Insights screen. Each line: a statistic computed from stored data, the
+    sample behind it, and a canned tip (fixed text, chosen by which line it is).
+    status 'shown' = passes its sample threshold and, for a comparison, a 95%
+    interval excluding zero; 'checked' = computed, no clear pattern."""
+    from zoneinfo import ZoneInfo
+    global SESSION_GAP_MIN
+    SESSION_GAP_MIN = settings["insights"]["session_gap_min"]
+    assign_sessions(games)
+    tz = ZoneInfo(settings["insights"]["timezone"])
+    lines = []
+
+    # 1. danger zone
+    buckets = [("1-10", 1, 10), ("11-20", 11, 20), ("21-30", 21, 30), ("31-40", 31, 40), ("41+", 41, 10_000)]
+    per = {b: _per_game(games, test=lambda m, lo=lo, hi=hi: lo <= m["n"] <= hi) for b, lo, hi in buckets}
+    rates = {b: (sum(x[0] for x in v), sum(x[1] for x in v)) for b, v in per.items()}
+    peak = max(("11-20", "21-30"), key=lambda b: rates[b][0] / max(1, rates[b][1]))
+    d, lo, hi = boot_diff(per[peak], per["1-10"])
+    ok = all(n >= MIN_MOVES for _, n in rates.values())
+    lines.append({
+        "id": "danger", "title": "Danger zone: where games turn",
+        "stat": "In positions still in the balance, you blunder " + ", ".join(
+            f"{_f(100 * x / n)} times per 100 moves in moves {b}" for b, (x, n) in rates.items()) + ".",
+        "sample": f"{sum(n for _, n in rates.values()):,} moves in undecided positions",
+        "detail": f"Moves {peak} vs moves 1-10: {100 * d:+.1f} per 100 moves (95% interval {100 * lo:+.1f} to {100 * hi:+.1f}, resampling whole games).",
+        "status": "shown" if ok and lo > 0 else "checked", "tip": TIPS["danger"]})
+
+    # 2. missed gifts
+    n = punished = partly = gave = 0
+    games_with = 0
+    for g in games:
+        gift_plies = {t["i"] + 1 for t in g["theirs"] if t["drop"] >= GIFT_DROP and t["wb_me"] < WON}
+        games_with += bool(gift_plies)
+        for m in g["mine"]:
+            if m["i"] in gift_plies:
+                n += 1
+                if m["drop"] < 5:
+                    punished += 1
+                elif m["drop"] < MISSED_DROP:
+                    partly += 1
+                else:
+                    gave += 1
+    lines.append({
+        "id": "gifts", "title": "Missed gifts",
+        "stat": f"Opponents blundered (one move losing at least 15 Win%) {n:,} times in {games_with:,} games when you weren't already winning. "
+                f"Your next move kept the advantage {punished:,} times ({_f(100 * punished / n)}%: lost under 5 Win%), "
+                f"gave back part of it {partly:,} times ({_f(100 * partly / n)}%: 5-10 Win%) and gave back at least 10 Win% "
+                f"{gave:,} times ({_f(100 * gave / n)}%)." if n else "No opponent blunders yet.",
+        "sample": f"{n:,} opponent blunders",
+        "detail": "Opponents' moves are judged by pass 1 only (200k nodes); their moves never get a deep check, so single cases can be pass-1 noise.",
+        "status": "shown" if n >= MIN_EVENTS else "checked", "tip": TIPS["gifts"]})
+
+    # 3. thrown wins
+    th = thrown(games)
+    win_n, thr_n = sum(th["winning"].values()), sum(th["thrown"].values())
+    fell = sum(v for k, v in th["stage"].items() if k != "never fell below 50")
+    lines.append({
+        "id": "thrown", "title": "Thrown wins",
+        "stat": f"You reached a winning position (Win% at least 90, about +6 pawns) in {win_n:,} games and didn't win {thr_n:,} "
+                f"({_f(100 * thr_n / max(1, win_n), 0)}%): " + ", ".join(
+                    f"{tc} {th['thrown'][tc]}/{th['winning'][tc]}" for tc in ("bullet", "blitz", "rapid")) +
+                f". {th['how']['lost on time']} lost on time while still winning, {th['how']['blundered, then lost on time']} "
+                f"blundered below 50% and then lost on time, {th['how']['lost on the board']} lost on the board, "
+                f"{th['how']['drawn']} drawn. Of the {fell} that fell below 50%, {th['stage']['1-20']} did so by move 20.",
+        "sample": f"{win_n:,} games",
+        "status": "shown" if win_n >= MIN_GAMES and thr_n >= MIN_EVENTS else "checked", "tip": TIPS["thrown"]})
+
+    # 4. blunders where several moves were fine
+    om = one_move_errors(mistakes)
+    sev, clear = om["several fine moves"], om["one clear best move"]
+    tot = sev["total"] + clear["total"]
+    lines.append({
+        "id": "several", "title": "Blunders where several moves were fine",
+        "stat": f"{sev['total']:,} of your {tot:,} deep-checked blunders ({_f(100 * sev['total'] / max(1, tot), 0)}%) came in positions "
+                f"where at least two moves were fine (second-best within 15 Win% of the best, so they never became cards). "
+                f"In those, the engine's reply line won 3+ points of material {sev['loses material']:,} times "
+                f"({_f(100 * sev['loses material'] / max(1, sev['total']), 0)}%), {sev['hung piece']:,} left a piece to be taken, "
+                f"and {sev['allowed mate']:,} allowed a forced mate.",
+        "sample": f"{sev['total']:,} blunders",
+        "status": "shown" if sev["total"] >= MIN_EVENTS else "checked", "tip": TIPS["several"]})
+
+    # 5. time controls
+    tcs = ("bullet", "blitz", "rapid")
+    per_tc = {tc: _per_game(games, tc=tc, event=lambda m: True) for tc in tcs}
+    cnt = {}
+    for tc in tcs:
+        c = Counter()
+        for g in games:
+            if g["tc"] != tc:
+                continue
+            for m in g["mine"]:
+                if _undecided(m):
+                    c["moves"] += 1
+                    lab = label_of(m["drop"])
+                    if lab:
+                        c[lab] += 1
+        cnt[tc] = c
+    d, lo, hi = boot_diff(_per_game(games, tc="rapid"), _per_game(games, tc="bullet"))
+    ok = all(cnt[tc]["moves"] >= MIN_MOVES for tc in tcs)
+    sentence = " Rapid is not cleaner than bullet." if lo > 0 else ""
+    lines.append({
+        "id": "tc", "title": "Time controls side by side",
+        "stat": "Per 100 moves in positions still in the balance: " + "; ".join(
+            f"{tc}: inaccuracies {_f(100 * cnt[tc]['inaccuracy'] / cnt[tc]['moves'])}, mistakes {_f(100 * cnt[tc]['mistake'] / cnt[tc]['moves'])}, "
+            f"blunders {_f(100 * cnt[tc]['blunder'] / cnt[tc]['moves'])}" for tc in tcs if cnt[tc]["moves"]) + "." + sentence,
+        "sample": ", ".join(f"{tc} {cnt[tc]['moves']:,} moves" for tc in tcs),
+        "detail": f"Rapid minus bullet blunders: {100 * d:+.1f} per 100 moves (95% interval {100 * lo:+.1f} to {100 * hi:+.1f}, resampling whole games).",
+        "status": "shown" if ok else "checked", "tip": TIPS["tc"] if sentence else None})
+    del per_tc
+
+    # ---- checked: tilt, game number, time of day (rating-adjusted)
+    by_session = defaultdict(list)
+    for g in games:
+        by_session[g["session"]].append(g)
+    a2, oth = [], []
+    for ss in by_session.values():
+        for j in range(2, len(ss)):
+            (a2 if ss[j - 1]["result"] == ss[j - 2]["result"] == "loss" else oth).append(ss[j])
+    la, lo_ = sum(g["result"] == "loss" for g in a2), sum(g["result"] == "loss" for g in oth)
+    tilt_ok = len(a2) >= MIN_GAMES and len(oth) >= MIN_GAMES
+    if tilt_ok:
+        d, lo, hi = diff_ci(la, len(a2), lo_, len(oth))
+        clear_ = lo > 0
+        lines.append({
+            "id": "tilt", "title": "Tilt: after two losses in a row",
+            "stat": f"After two straight losses in a session you lost {_f(100 * la / len(a2))}% of the next games ({la}/{len(a2)}), "
+                    f"against {_f(100 * lo_ / len(oth))}% otherwise ({lo_}/{len(oth)}): {100 * d:+.1f} points, 95% interval {100 * lo:+.1f} to {100 * hi:+.1f}.",
+            "sample": f"{len(a2) + len(oth):,} games with two earlier games in the session",
+            "detail": "A session: games where each starts no more than "
+                      f"{SESSION_GAP_MIN} minutes after the previous one ended.",
+            "status": "shown" if clear_ else "checked", "tip": TIPS["tilt"] if clear_ else None})
+    for lid, title, key, order in (
+            ("gameno", "Results by game number in a session", lambda g: k_bucket(g["k"]), ["1", "2", "3", "4-5", "6-10", "11+"]),
+            ("hour", "Results by time of day", lambda g: hour_bucket(g, tz), ["00-06", "06-12", "12-18", "18-24"])):
+        parts, clear_ = [], False
+        for b in order:
+            gs = [g for g in games if key(g) == b]
+            nn, m, lo, hi = _resid_ci(gs)
+            if nn < MIN_GAMES:
+                parts.append(f"{b}: {nn} games (too few)")
+                continue
+            parts.append(f"{b}: {m:+.1f} ({lo:+.1f} to {hi:+.1f}, {nn} games)")
+            clear_ |= lo > 0 or hi < 0
+        lines.append({"id": lid, "title": title,
+                      "stat": "Score minus rating-expected score, in points: " + "; ".join(parts) + ".",
+                      "sample": f"{len(games):,} games",
+                      "detail": "Expected score from the Elo formula on the two ratings stored with each game; 95% intervals.",
+                      "status": "shown" if clear_ else "checked", "tip": TIPS[lid] if clear_ else None})
+
+    return {"format": 1, "games": len(games), "lines": lines,
+            "thresholds": {"games": MIN_GAMES, "moves": MIN_MOVES, "events": MIN_EVENTS,
+                           "comparisons": "shown only when the 95% interval of the difference excludes zero"}}
