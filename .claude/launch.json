@@ -1,6 +1,7 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "app", "runtimeExecutable": "npm", "runtimeArgs": ["--prefix", "app", "run", "dev"], "port": 8000 }
+    { "name": "app", "runtimeExecutable": "npm", "runtimeArgs": ["--prefix", "app", "run", "dev"], "port": 8000 },
+    { "name": "mock-github", "runtimeExecutable": "python3", "runtimeArgs": ["app/tools/mock_github.py", "8787"], "port": 8787 }
   ]
 }

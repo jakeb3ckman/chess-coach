@@ -188,25 +188,29 @@ Ongoing at your current pace (~850 games/month) is roughly a quarter of that per
 - **Backup and restore** (2.2.2): Settings saves every review event to a file and restores from such a file. Restoring adds only events not already on the device (by event id), queues them for upload, and rebuilds the affected card schedules from all their events.
 - **Use the home-screen app from the first day.** On iPhone, the home-screen app has storage separate from Safari, and Safari may delete a website's data after 7 days without a visit.
 
-### 6.2 Sync (milestone 2.3, designed now, built after the stop)
+### 6.2 Sync (milestone 2.3, built 2026-11-15, version 2.3.0)
 
-1. Each review is saved on the device first (works offline).
-2. Every ~10 reviews, when the app goes to the background, and on open, the device appends its outbox events to its own monthly file in the progress repo, then marks them sent. Each event has a unique `id`, so a retry after a half-finished upload never counts a review twice.
-3. On open, the device fetches the progress repo's file list in **one request** (the Git tree API returns every file with a content hash). It downloads only files whose hash changed since last time, usually one or two.
-4. New events from the other device are merged in, and only the cards they touch are replayed.
+**Where:** a private GitHub repository (e.g. `jakeb3ckman/chess-coach-progress`). Files: `log/{device}/{YYYY-MM}.ndjson`, one review event per line (the format-2 events of section 3, including `set` events). Each device writes only its own files, so devices never conflict. GitHub is the source of truth once events are uploaded.
 
-Devices never write the same file, so there are no merge conflicts. If both review the same card offline, both answers count, in time order. GitHub is the source of truth, so losing the phone's local storage loses nothing once events are synced.
+**One sync** (code: `app/src/sync.ts`):
+1. `GET /repos/{repo}`: checks the token, that the token reaches the repo, and that the repo is **private** (a public repo is refused: nothing is uploaded).
+2. `GET /repos/{repo}/git/trees/{branch}?recursive=1`: the whole file list in one request, each file with its content hash. Only the other devices' files whose hash changed since the last sync are downloaded (`git/blobs/{sha}`). Their events are merged: an event id is stored once; every card that got new events has its schedule rebuilt from all of its events.
+3. Upload the outbox, per month: read this device's file (`contents` API), append the events it doesn't have, write it back with the file's sha (a stale sha is refused by GitHub, and the app re-reads and retries). Events are marked sent only after GitHub confirms the write.
 
-**Expired or revoked token:** GitHub answers 401 (expired, revoked, or mistyped) or 403/404 (token lacks access to the repo). The app then stops trying, keeps training normally, and shows a banner: "Sync stopped: GitHub refused the token (expired or revoked). N reviews are saved on this device and will upload when you enter a new token." Tapping it opens the token screen. Outbox events are removed only after GitHub confirms the write, so nothing is lost however long sync is broken. Network errors (offline) are not token errors: they show a quiet "offline, N waiting" and retry later.
+**When:** on opening (after the first card is on screen), when the app goes to the background or comes back, after every 10 answers or 20 seconds after the last answer, every 2 minutes while open, and on "Sync now". A sync never blocks the board.
 
-**Entering the token:** inside the app's own Settings screen, typed or pasted while running as the installed home-screen app. On iPhone that app does not share storage with Safari, so a token entered in Safari would not reach it. The token is never put in a URL (URLs end up in history and logs). Settings shows which repo the token reaches and when sync last succeeded, and has a "Remove token" button. Each device (iPhone, Mac) gets its own token, so revoking one doesn't stop the other.
+**Set progress across devices:** sets are derived from events (section 6.1), so the other device's answers move cards between Remaining / Missed / Unsure / Known exactly as they would locally. A device's first set of the day is provisional until its first answer: a device that syncs before answering joins the set the other device already started, instead of starting a second one. If both devices start a set offline, the two card lists are combined.
 
-**Opening stays fast as reviews pile up over a year:**
-- The app never replays all events on open. It keeps each card's current schedule in the on-device database and reads that directly. Opening costs one read of about 2,500 small records, and that number doesn't grow with reviews.
-- Replays happen only for cards that received another device's events, and a single card has at most a few dozen events in a year.
-- Remote files are monthly (about 24 per year across two devices), and opening fetches one file list plus only the changed files. Uploading rewrites only the current month's file for this device, which stays under about 100 KB.
-- Sync runs in the background after the first card is on screen. It never blocks the board.
-- Measured target for 2.3: first card on screen in under 1 second on the iPhone with a simulated year of reviews (about 4,000 events), tested before 2.3 is called done.
+**Both devices answer the same card offline (same study day):** both answers are kept. For the long-term schedule, only the **earlier** answer of the day counts (the rule "only the first answer of the day schedules", applied across devices); the later one is drilling. For the day's set, both showings count in time order (e.g. missed on the phone, then right on the Mac → Unsure). Both devices end up with identical schedules and sets once both have synced.
+
+**Errors:** GitHub answers 401 for an expired, revoked or mistyped token (checked against api.github.com: `401 Bad credentials`); 404 when the repository name is wrong or the token doesn't include it; 403 for a missing permission or a rate limit. The app then:
+- keeps training normally; every review stays in the outbox until GitHub confirms it;
+- for token or access problems, shows a red message at the top, e.g. "Sync stopped: GitHub refused the token (expired, revoked or mistyped). 3 review events are saved on this device and will upload when sync works again. Tap to enter a new token." Tapping opens Settings;
+- when offline, shows nothing loud; Settings says "Offline. N waiting to upload."
+
+**The token:** a fine-grained personal access token for that one repository, with "Contents: Read and write" only. It is entered in the app's own Settings, in the installed Home Screen app on the iPhone (whose storage is separate from Safari) and in the app on the Mac. One token per device, so revoking one doesn't stop the other. It is stored only in that app's on-device storage, never in a URL. Settings shows the last 4 characters, has "Sync now" and "Remove token".
+
+**Opening stays fast:** opening reads each card's stored schedule and today's events (by index), never the whole log; sync runs after the first card is on screen and downloads only changed files. Measured with a simulated year (about 4,000 reviews, 2,530 schedules, 14 monthly files): first card on screen in about 75 ms on the Mac; a normal reopen makes 2 requests (repository, file list). Not yet measured on the iPhone.
 
 ## 7. Milestones
 
@@ -217,7 +221,7 @@ Devices never write the same file, so there are no merge conflicts. If both revi
 | **1.3** | Full backfill + `docs/phase-1-report.md` + nightly workflow | The report with 15 sample puzzles linked to the real games. **STOP 2** |
 | 2.1 | Static app: one card on a board, play a move, right/wrong | Open the site on Mac and iPhone |
 | 2.2 | FSRS daily queue (local only) | Daily review count; misses come back sooner. **STOP: you use it on your iPhone for a few days before sync is built** |
-| 2.3 | Sync through the progress repo | Review on phone, see it updated on Mac |
+| 2.3 | Sync through the progress repo (built 2026-11-15) | Review on phone, see it updated on Mac |
 | 2.4 | Hands-off nightly run | Play a game tonight; its mistakes are cards tomorrow |
 | 3.1 | Repertoire: my openings as White/Black, opponents' replies, results by line | Opening page in the app |
 | 3.2 | Opening leaks: positions where I most often miss the best move, added to the deck as `opening` cards | Leak list; opening cards appear in reviews |

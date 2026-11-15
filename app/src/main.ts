@@ -16,7 +16,8 @@ import {
   applyEvent, getScheduler, previewDue, Rating, replayCard, scheduledToday, type CardState, type Scheduler,
 } from './scheduler.ts';
 import { inCheck, isPromotion, legalDests, lineSteps, sanOf, uciSquares, type LineStep } from './chessutil.ts';
-import { cleanEvents, mergeEvents } from './ledger.ts';
+import { cleanEvents, mergeEvents, type MergeResult } from './ledger.ts';
+import { DEFAULT_API, Sync, type SyncStatus } from './sync.ts';
 import type { AppCard, CardsFile, ReviewEvent, ReviewEventV2, Status } from './types.ts';
 
 declare const BUILD_ID: string;
@@ -54,9 +55,14 @@ interface App {
   cg: Api;
   sh?: Showing;
   reloadWhenIdle: boolean;
+  // The day's first set is only written to the log with the first answer. Until
+  // then it is provisional, so a device that turns on sync before answering
+  // anything simply joins the set the other device already started.
+  pendingSet?: ReviewEventV2;
 }
 
 let app: App;
+let sync: Sync;
 
 // ---------- screen edges (top strip under the status bar, home indicator)
 
@@ -191,10 +197,102 @@ async function start() {
   });
   if (BUILD_ID === 'dev') {
     // Local testing only (removed from published builds).
-    (window as unknown as Record<string, unknown>).__test = { app: () => app, move: (u: string) => onMove(u.slice(0, 2) as Key, u.slice(2, 4) as Key) };
+    (window as unknown as Record<string, unknown>).__test = { app: () => app, sync: () => sync, move: (u: string) => onMove(u.slice(0, 2) as Key, u.slice(2, 4) as Key) };
   }
   showInstallHint();
+  setupSync();
   await afterStart();
+}
+
+// ---------- sync (2.3)
+
+function setupSync() {
+  sync = new Sync({ ctx: () => app, device: () => app.device, onMerged, onStatus: showSyncStatus });
+  afterCommit = () => sync.noteEvent();
+  document.addEventListener('visibilitychange', () => void sync.run()); // on open and when leaving the app
+  setInterval(() => { if (document.visibilityState === 'visible') void sync.run(); }, 120_000);
+  $('#syncmsg').addEventListener('click', openSettings);
+  registerSettingsSection(syncSettingsHtml, wireSyncSettings);
+}
+
+/** Events from the other device arrived: refresh today's set and the screen. */
+async function onMerged(res: MergeResult) {
+  if (res.days.has(app.today) || app.pendingSet) {
+    app.pendingSet = undefined; // re-choose with the other device's reviews
+    app.dayEvents = await eventsForDay(app.db, app.today);
+    rederive();
+  }
+  renderCounts();
+  const sh = app.sh;
+  // Never pull a card away mid-answer; otherwise follow the merged set.
+  if (!sh) {
+    if (!$('#settings').hasAttribute('open')) await showNext();
+  } else if (sh.attempts === 0 && !sh.done && !app.set.order.includes(sh.card.id)) {
+    await showNext();
+  }
+}
+
+function showSyncStatus(s: SyncStatus) {
+  const el = $('#syncmsg');
+  const loud = s.state === 'auth' || s.state === 'access' || s.state === 'public';
+  el.hidden = !loud;
+  if (loud) el.textContent = s.message;
+  const live = document.getElementById('sync-status');
+  if (live) live.textContent = syncLine(s);
+}
+
+function syncLine(s: SyncStatus): string {
+  const last = s.lastOk ? `Last synced ${new Date(s.lastOk).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}.` : 'Never synced.';
+  if (s.state === 'off') return `Not set up. ${s.waiting} review events waiting to upload.`;
+  if (s.state === 'ok') return `${last} ${s.waiting} waiting to upload.`;
+  if (s.state === 'syncing') return 'Syncing…';
+  return `${s.message} ${last}`;
+}
+
+async function syncSettingsHtml(): Promise<string> {
+  const cfg = await sync.config();
+  const devApi = BUILD_ID === 'dev'
+    ? `<label class="muted small">API address (testing only)<input type="text" id="sync-api" value="${esc(cfg?.api ?? DEFAULT_API)}"></label>` : '';
+  return `
+    <h3>Sync with your other devices</h3>
+    <p id="sync-status" class="small">${esc(syncLine(sync.status))}</p>
+    <label class="muted small">Private repository (owner/name)
+      <input type="text" id="sync-repo" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(cfg?.repo ?? 'jakeb3ckman/chess-coach-progress')}"></label>
+    <label class="muted small">Token ${cfg ? `(saved, ends …${esc(cfg.token.slice(-4))}; paste a new one to replace it)` : ''}
+      <input type="password" id="sync-token" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…"></label>
+    ${devApi}
+    <div class="buttons">
+      <button id="sync-save" class="primary">${cfg ? 'Save and sync' : 'Turn on sync'}</button>
+      ${cfg ? '<button id="sync-now" class="secondary">Sync now</button><button id="sync-remove" class="secondary">Remove token</button>' : ''}
+    </div>`;
+}
+
+function wireSyncSettings(dlg: HTMLDialogElement) {
+  const q = <T extends HTMLElement>(sel: string) => dlg.querySelector(sel) as T | null;
+  q('#sync-save')?.addEventListener('click', async () => {
+    const old = await sync.config();
+    const repo = q<HTMLInputElement>('#sync-repo')!.value.trim().replace(/^https:\/\/github\.com\//, '').replace(/\/$/, '');
+    const token = q<HTMLInputElement>('#sync-token')!.value.trim() || old?.token || '';
+    const api = q<HTMLInputElement>('#sync-api')?.value.trim() || undefined;
+    const status = q('#sync-status')!;
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) { status.textContent = 'Enter the repository as owner/name, e.g. jakeb3ckman/chess-coach-progress.'; return; }
+    if (!token) { status.textContent = 'Paste the token first.'; return; }
+    await sync.saveConfig({ repo, token, ...(api && api !== DEFAULT_API ? { api } : {}) });
+    status.textContent = 'Syncing…';
+    const s = await sync.run();
+    status.textContent = syncLine(s);
+    if (s.state === 'ok') q<HTMLInputElement>('#sync-token')!.value = '';
+  });
+  q('#sync-now')?.addEventListener('click', async () => {
+    q('#sync-status')!.textContent = 'Syncing…';
+    q('#sync-status')!.textContent = syncLine(await sync.run());
+  });
+  q('#sync-remove')?.addEventListener('click', async () => {
+    await sync.saveConfig(null);
+    await sync.run();
+    dlg.close();
+    openSettings();
+  });
 }
 
 /** Grade a card left waiting for Next, then show the right screen. */
@@ -202,9 +300,15 @@ async function afterStart() {
   const pending = await getMeta<{ day: string; card: string }>(app.db, 'pending_grade');
   if (pending && pending.day === app.today) await grade(pending.card, Rating.Good); // closed before Next
   else if (pending) await setMeta(app.db, 'pending_grade', null);
+  // No set yet today and sync is on: give the other device's reviews a moment to
+  // arrive first (at most 2.5 s), so both devices start from the same set.
+  if (app.set.round === 0 && dayKey(new Date()) === app.today && await sync.config()) {
+    await Promise.race([sync.run(), new Promise((r) => setTimeout(r, 2500))]);
+  }
   const paused = await getMeta<string>(app.db, 'paused');
   if (paused === app.today && !isComplete(app.set) && app.set.round > 0) showPaused();
-  else showNext();
+  else await showNext();
+  void sync.run(); // after the first card is on screen
 }
 
 // ---------- the day's sets
@@ -213,12 +317,16 @@ function rederive() {
   app.set = deriveSet(app.today, app.dayEvents);
 }
 
-/** Log a new set of the day ('set' event) and make it current. */
-async function startSet(round: number, ids: string[]) {
-  const e: ReviewEventV2 = {
+function setEvent(round: number, ids: string[]): ReviewEventV2 {
+  return {
     id: crypto.randomUUID(), v: 2, card_id: '', ts: new Date().toISOString(), day: app.today, device: app.device,
     kind: 'set', showing: 0, sched: false, round, cards: ids,
   };
+}
+
+/** Log a new set of the day ('set' event) and make it current. */
+async function startSet(round: number, ids: string[]) {
+  const e = setEvent(round, ids);
   await saveAll(app.db, [e], []);
   app.dayEvents.push(e);
   rederive();
@@ -236,6 +344,7 @@ async function ensureToday() {
   const today = dayKey(now);
   if (app.today !== today) {
     app.today = today;
+    app.pendingSet = undefined;
     app.dayEvents = await eventsForDay(app.db, today);
     rederive();
   }
@@ -243,7 +352,11 @@ async function ensureToday() {
     const allowed = Math.max(0, NEW_PER_DAY - newStartedToday(app.states, today));
     const pick = chooseSetCards(app.cards, app.states, now, allowed, cardsInTodaysSets());
     const ids = [...pick.due, ...pick.fresh];
-    if (ids.length) await startSet(1, ids);
+    if (ids.length) {
+      app.pendingSet = setEvent(1, ids); // provisional until the first answer
+      app.dayEvents.push(app.pendingSet);
+      rederive();
+    }
   }
 }
 
@@ -280,6 +393,7 @@ async function firstTryRate(): Promise<{ rate: number; n: number }> {
 }
 
 async function showComplete() {
+  markFirstScreen();
   idleBoard();
   renderCounts();
   const set = app.set;
@@ -343,7 +457,15 @@ function setBoardShrink(px: number) {
   document.documentElement.style.setProperty('--board-shrink', `${Math.max(0, Math.round(px))}px`);
 }
 
+let firstScreenMarked = false;
+function markFirstScreen() {
+  if (firstScreenMarked) return;
+  firstScreenMarked = true;
+  performance.mark('first-screen'); // time from page start to the first card or set screen
+}
+
 function showCard(card: AppCard) {
+  markFirstScreen();
   setBoardShrink(0);
   const n = (app.set.showings[card.id] ?? 0) + 1;
   const st = app.states.get(card.id);
@@ -411,7 +533,9 @@ async function commit(events: ReviewEventV2[], rating: number | null = null) {
   const sh = app.sh!;
   let st = app.states.get(sh.card.id);
   for (const e of events) st = applyEvent(app.sched, st, e, e.sched ? rating : null, !!e.habit);
-  await saveAll(app.db, events, st ? [st] : []);
+  const pending = app.pendingSet;
+  app.pendingSet = undefined; // the provisional set becomes real with the first answer
+  await saveAll(app.db, pending ? [pending, ...events] : events, st ? [st] : []);
   if (st) app.states.set(sh.card.id, st);
   app.dayEvents.push(...events);
   rederive();
@@ -693,7 +817,7 @@ async function openSettings() {
     <h2>Settings</h2>
     <dl>
       <dt>Version</dt><dd><b>${esc(APP_VERSION)}</b> (build ${esc(BUILD_ID)})</dd>
-      <dt>Review events saved on this device</dt><dd>${waiting} not yet uploaded</dd>
+      <dt>Review events not yet uploaded</dt><dd>${waiting}</dd>
       <dt>Deck</dt><dd>${app.cards.length} cards, ${started} started</dd>
       <dt>Today</dt><dd>set ${app.set.round || '-'}: ${app.set.cards.length} cards (${app.today})</dd>
       <dt>Home Screen app</dt><dd>${isStandalone() ? 'yes' : 'no, running in the browser'}</dd>
@@ -762,7 +886,8 @@ async function restoreBackup(file: File | undefined) {
     return;
   }
   const res = await mergeEvents(app, events, 0);
-  if (res.days.has(app.today)) {
+  if (res.days.has(app.today) || app.pendingSet) {
+    app.pendingSet = undefined;
     app.dayEvents = await eventsForDay(app.db, app.today);
     rederive();
   }
@@ -770,15 +895,13 @@ async function restoreBackup(file: File | undefined) {
     ? `Restored ${res.added} review event${res.added === 1 ? '' : 's'} (${res.already} were already here). ${res.cards.size} card schedule${res.cards.size === 1 ? '' : 's'} rebuilt.`
     : `Nothing new: all ${res.already} events in that backup are already on this device.`;
   if (res.added && (!app.sh || app.sh.done || app.sh.attempts === 0)) showNext();
+  if (res.added) void sync.run();
 }
 
-/** For sync (2.3) and tests: hand the app's state to other modules. */
-export function appRef(): App { return app; }
-export function registerSettingsSection(render: () => Promise<string>, wire: (dlg: HTMLDialogElement) => void) {
+function registerSettingsSection(render: () => Promise<string>, wire: (dlg: HTMLDialogElement) => void) {
   settingsSections.push(render);
   settingsWiring.push(wire);
 }
-export function onCommit(f: () => void) { afterCommit = f; }
 
 start().catch((e) => {
   $('#info').innerHTML = `<p class="bad">Could not start: ${esc(String(e?.message ?? e))}</p>`;

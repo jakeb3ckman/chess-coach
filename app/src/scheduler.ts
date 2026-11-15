@@ -117,15 +117,16 @@ export function replayCard(s: Scheduler, events: ReviewEvent[], gameMoves?: Set<
     .filter((e) => (seen.has(e.id) ? false : (seen.add(e.id), true)))
     .sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : a.id < b.id ? -1 : 1));
   let st: CardState | undefined;
-  const v1Days = new Set<string>();
+  // Only the first answer of each study day moves the schedule, across devices
+  // too: if both devices answered the card offline on the same day, the earlier
+  // answer counts and the later one is drilling (spec 6.2).
+  const schedDays = new Set<string>();
   for (const ev of sorted) {
-    let first = false;
-    if (ev.v === 1) {
-      const d = eventDay(ev);
-      first = !v1Days.has(d);
-      v1Days.add(d);
-    }
-    st = applyEvent(s, st, ev, schedRating(ev, first), isHabit(ev, gameMoves));
+    const d = eventDay(ev);
+    let rating = schedRating(ev, !schedDays.has(d));
+    if (rating !== null && schedDays.has(d)) rating = null;
+    if (rating !== null) schedDays.add(d);
+    st = applyEvent(s, st, ev, rating, isHabit(ev, gameMoves));
   }
   return st;
 }

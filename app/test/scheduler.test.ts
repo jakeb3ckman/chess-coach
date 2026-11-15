@@ -88,3 +88,16 @@ test('state survives a JSON round trip (dates revived)', async () => {
   const e2 = v2('b', '2026-11-15T10:00:00.000Z', '2026-11-15', { kind: 'grade', sched: true, rating: Rating.Good });
   assert.deepEqual(applyEvent(s, back, e2, Rating.Good), applyEvent(s, st, e2, Rating.Good));
 });
+
+test('two devices answer the same card offline on one day: the earlier answer schedules', async () => {
+  const s = await getScheduler();
+  const phone = v2('p', '2026-11-15T09:00:00.000Z', '2026-11-15', { device: 'iphone', correct: false, sched: true, rating: Rating.Again });
+  const mac = v2('m', '2026-11-15T09:05:00.000Z', '2026-11-15', { device: 'mac', kind: 'grade', sched: true, rating: Rating.Good });
+  const both = replayCard(s, [mac, phone])!;
+  const onlyPhone = replayCard(s, [phone])!;
+  assert.deepEqual(both.fsrs, onlyPhone.fsrs);
+  assert.equal(both.n_events, 2);
+  // Next day the Mac's answer counts again.
+  const next = v2('n', '2026-11-16T09:00:00.000Z', '2026-11-16', { device: 'mac', kind: 'grade', sched: true, rating: Rating.Good });
+  assert.notDeepEqual(replayCard(s, [phone, mac, next])!.fsrs, both.fsrs);
+});
