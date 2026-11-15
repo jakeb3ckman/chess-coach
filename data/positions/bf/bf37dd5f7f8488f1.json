@@ -1,0 +1,1 @@
+{"format":1,"epd":"rnbqkbnr/pp2pppp/8/1B1p4/3P4/8/PPP2PPP/RNBQK1NR b KQkq -","engine":{"name":"Stockfish 19","threads":1,"hash_mb":16,"nodes":5000000,"multipv":5},"lines":[[2,22,"c8d7 b5e2 d7f5 c2c3 e7e6 c1f4 f8d6 f4d6 d8d6 g1f3"],[31,22,"b8c6 c2c4 a7a6 b5c6 b7c6 b1c3 e7e6 c4c5 e6e5 g1e2"],[35,22,"b8d7 g1f3 e7e6 c1f4 g8e7 b1d2 e7f5 b5d3 f8d6 f4g3"],[561,22,"d8d7"]],"secs":8.06}
