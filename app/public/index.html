@@ -21,7 +21,9 @@
 </head>
 <body>
 <div id="app">
-  <header id="bar"><button id="menu" aria-label="Settings">⚙︎</button></header>
+  <!-- Empty on purpose: iOS blurs this strip under the status bar. The menu is a tile under the board. -->
+  <header id="bar"></header>
+  <section id="page" hidden><div class="page-head"><button id="page-back" class="link" hidden>‹ Back</button><h2 id="page-title"></h2><button id="page-close" class="link">Done</button></div><div id="page-body"></div></section>
   <div id="hint" hidden></div>
   <div id="syncmsg" hidden></div>
   <main id="board-wrap"><div id="board"></div></main>
@@ -31,6 +33,7 @@
 </div>
 <div id="promo" hidden></div>
 <dialog id="settings"></dialog>
+<dialog id="menu-sheet" aria-label="Menu"></dialog>
 <script type="module" src="app.js?v=__BUILD_ID__"></script>
 </body>
 </html>

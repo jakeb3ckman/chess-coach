@@ -10,15 +10,17 @@ import {
 import { dayKey, returnText } from './day.ts';
 import {
   chooseSetCards, counts, deriveSet, EXTRA_SET_NEW, extraSetForecast, isComplete, isSetEvent, NEW_PER_DAY,
-  newStartedToday, nextStatus, type DaySet,
+  newStartedToday, newStartedTodayIn, nextStatus, type DaySet,
 } from './session.ts';
+import { DEFAULT_RULES, judge, rightMoves } from './leak.ts';
+import { openPage, closePage } from './pages.ts';
 import {
   applyEvent, getScheduler, previewDue, Rating, replayCard, scheduledToday, type CardState, type Scheduler,
 } from './scheduler.ts';
 import { inCheck, isPromotion, legalDests, lineSteps, sanOf, uciSquares, type LineStep } from './chessutil.ts';
 import { cleanEvents, mergeEvents, type MergeResult } from './ledger.ts';
 import { DEFAULT_API, Sync, type SyncStatus } from './sync.ts';
-import type { AppCard, CardsFile, ReviewEvent, ReviewEventV2, Status } from './types.ts';
+import type { AppCard, CardsFile, OpeningRules, ReviewEvent, ReviewEventV2, Status } from './types.ts';
 
 declare const BUILD_ID: string;
 declare const APP_VERSION: string;
@@ -48,6 +50,8 @@ interface App {
   device: string;
   cards: AppCard[];
   byId: Map<string, AppCard>;
+  rules: OpeningRules; // leak cards (Phase 3)
+  openingIds: Set<string>; // ids of leak cards
   states: Map<string, CardState>;
   today: string;
   dayEvents: ReviewEvent[]; // every event of the current study day (all devices)
@@ -222,15 +226,20 @@ async function start() {
   const dayEvents = await eventsForDay(db, today);
   app = {
     db, sched, device, cards: file.cards, byId, states, today, dayEvents,
+    rules: file.opening_rules ?? DEFAULT_RULES,
+    openingIds: new Set(file.cards.filter((c) => c.deck === 'opening').map((c) => c.id)),
     set: deriveSet(today, dayEvents), cg, reloadWhenIdle: false,
   };
-  $('#menu').addEventListener('click', openSettings);
+  // The menu is a tile in the counts row (nothing tappable sits in the top strip, which iOS blurs).
+  $('#counts').addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('#menu')) openMenu();
+  });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && (!app.sh || app.sh.done) && dayKey(new Date()) !== app.today) showNext();
   });
   if (BUILD_ID === 'dev') {
     // Local testing only (removed from published builds).
-    (window as unknown as Record<string, unknown>).__test = { app: () => app, sync: () => sync, move: (u: string) => onMove(u.slice(0, 2) as Key, u.slice(2, 4) as Key) };
+    (window as unknown as Record<string, unknown>).__test = { app: () => app, sync: () => sync, move: (u: string) => onMove(u.slice(0, 2) as Key, u.slice(2, 4) as Key), show: (id: string) => showCard(app.byId.get(id)!) };
   }
   showInstallHint();
   setupSync();
@@ -384,7 +393,7 @@ async function ensureToday() {
   }
   if (app.set.round === 0) {
     const allowed = Math.max(0, NEW_PER_DAY - newStartedToday(app.states, today));
-    const pick = chooseSetCards(app.cards, app.states, now, allowed, cardsInTodaysSets());
+    const pick = chooseSetCards(app.cards, app.states, now, allowed, cardsInTodaysSets(), openingAllowed(today));
     const ids = [...pick.due, ...pick.fresh];
     if (ids.length) {
       app.pendingSet = setEvent(1, ids); // provisional until the first answer
@@ -394,10 +403,42 @@ async function ensureToday() {
   }
 }
 
+/** New leak cards still allowed today (at most leak_cards_per_day, inside the 10 new). */
+function openingAllowed(day: string): number {
+  return Math.max(0, app.rules.leak_cards_per_day - newStartedTodayIn(app.states, day, app.openingIds));
+}
+
 function renderCounts() {
   const c = counts(app.set);
   const tile = (s: Status, label: string) => `<div class="cnt ${s}"><span class="lbl">${label}</span><b>${c[s]}</b></div>`;
-  $('#counts').innerHTML = tile('remaining', 'Remaining') + tile('missed', 'Missed') + tile('unsure', 'Unsure') + tile('known', 'Known');
+  $('#counts').innerHTML = tile('remaining', 'Remaining') + tile('missed', 'Missed') + tile('unsure', 'Unsure') + tile('known', 'Known')
+    + `<button class="cnt menu" id="menu" aria-label="Menu"><span class="lbl">Menu</span><b>☰</b></button>`;
+}
+
+// ---------- menu: Train / Openings / Insights / Settings
+
+function openMenu() {
+  const dlg = $('#menu-sheet') as HTMLDialogElement;
+  dlg.innerHTML = `<div class="menu-list">
+      <button data-go="train" class="secondary">Train</button>
+      <button data-go="openings" class="secondary">Openings</button>
+      <button data-go="insights" class="secondary">Insights</button>
+      <button data-go="settings" class="secondary">Settings</button>
+      <button data-go="close" class="link">Close</button></div>`;
+  dlg.querySelectorAll<HTMLButtonElement>('button').forEach((b) => b.addEventListener('click', () => {
+    dlg.close();
+    const go = b.dataset.go;
+    if (go === 'train') showTrain();
+    else if (go === 'openings' || go === 'insights') openPage(go, { db: app.db, byId: app.byId, onClose: showTrain });
+    else if (go === 'settings') openSettings();
+  }));
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); }); // tap outside closes
+  dlg.showModal();
+}
+
+function showTrain() {
+  closePage();
+  app.cg.redrawAll(); // the board was hidden; chessground re-measures it
 }
 
 /** Full tiles while a card is asked; one thin row on the answer screen. */
@@ -436,7 +477,7 @@ async function showComplete() {
   idleBoard();
   renderCounts();
   const set = app.set;
-  const pick = chooseSetCards(app.cards, app.states, new Date(), EXTRA_SET_NEW, cardsInTodaysSets());
+  const pick = chooseSetCards(app.cards, app.states, new Date(), EXTRA_SET_NEW, cardsInTodaysSets(), openingAllowed(app.today));
   const more = pick.due.length + pick.fresh.length;
   let html: string;
   if (set.cards.length === 0) {
@@ -598,7 +639,8 @@ async function onMove(orig: Key, dest: Key) {
   if (isPromotion(card.fen, orig, dest)) uci += await pickPromotion(card.color);
   sh.attempts++;
   sh.attempt = uci;
-  if (uci === card.solution) {
+  const verdict = judge(card, uci, app.rules);
+  if (verdict.kind === 'right') {
     sh.done = true;
     if (!sh.failed) {
       const status = nextStatus(app.set.status[card.id] ?? 'remaining', true);
@@ -610,14 +652,18 @@ async function onMove(orig: Key, dest: Key) {
     return showAnswer();
   }
   // Wrong: say so, put the piece back, let me try again.
-  const habit = card.occ.some((o) => o.move === uci);
+  const habit = verdict.kind === 'habit';
   const f = failOnce();
   const e = ev('move', {
     attempt: sh.attempts, move_played: uci, correct: false, habit, status_after: f.status,
     sched: f.sched, rating: f.sched ? Rating.Again : undefined,
   });
   await commit([e], f.sched ? Rating.Again : null);
-  banner('wrong', habit ? "✗ That's the move you played in the game." : '✗ Not the best move. Try again.');
+  const leakCard = card.deck === 'opening';
+  banner('wrong', verdict.kind === 'habit'
+    ? (leakCard ? "✗ That's the move you usually play here." : "✗ That's the move you played in the game.")
+    : verdict.kind === 'playable' ? `✗ Playable, but there's better (−${verdict.behind.toFixed(1)} Win%). Try again.`
+    : leakCard ? '✗ Not one of the good moves. Try again.' : '✗ Not the best move. Try again.');
   showTools();
   setTimeout(() => {
     if (app.sh === sh && !sh.done) setPosition(card.fen, card.prev, true, toolShapes());
@@ -693,9 +739,19 @@ async function showAnswer() {
   const gameSan = sanOf(card.fen, g.move);
   const st = app.states.get(card.id);
   countsThin(true);
+  const leakCard = card.deck === 'opening';
+  const goodOther = leakCard && sh.attempt && sh.attempt !== card.solution && rightMoves(card).includes(sh.attempt) && !sh.revealed;
+  const shown = goodOther ? sanOf(card.fen, sh.attempt!) : best;
+  const word = leakCard ? 'Good move' : 'Solved';
   if (sh.revealed) banner('revealed', `Solution: <b>${esc(best)}</b>`);
-  else if (!sh.failed) banner('done', `✓ Solved: ${esc(best)}`);
-  else banner('done', `✓ Solved: ${esc(best)} <span class="sub">(counts as missed)</span>`);
+  else if (!sh.failed) banner('done', `✓ ${word}: ${esc(shown)}`);
+  else banner('done', `✓ ${word}: ${esc(shown)} <span class="sub">(counts as missed)</span>`);
+  // Leak cards: the other right answers, from the position pass.
+  const others = leakCard ? rightMoves(card).filter((u) => u !== card.solution).map((u) => sanOf(card.fen, u)) : [];
+  const bestLabel = others.length ? `Best line · also good: ${others.map(esc).join(', ')}` : 'Best line';
+  const played = leakCard
+    ? `You usually play <b>${esc(gameSan)}</b> (${card.occ.filter((o) => o.move === g.move).length}×)`
+    : `You played <b>${esc(gameSan)}</b>`;
 
   const tags = [...card.tags];
   if (st && st.habit > 0) tags.push(`habit ×${st.habit}`);
@@ -707,12 +763,12 @@ async function showAnswer() {
     : `<p class="muted small">Refutation line not computed yet.</p>`;
   $('#info').innerHTML = `
     <div id="essential">
-      <div class="row"><span class="what">Best line</span><span class="ev">${esc(evalWords(card.best_eval))}</span></div>
+      <div class="row"><span class="what">${bestLabel}</span><span class="ev">${esc(evalWords(card.best_eval))}</span></div>
       <div class="moves">${lineChips('best')}</div>
-      <div class="row"><span class="what">You played <b>${esc(gameSan)}</b>${sh.lines.ref.length ? ', refuted by' : ''}</span><span class="ev">${esc(evalWords(g.eval))}</span></div>
+      <div class="row"><span class="what">${played}${sh.lines.ref.length ? ', refuted by' : ''}</span><span class="ev">${esc(evalWords(g.eval))}</span></div>
       ${refChips}
     </div>
-    <p class="muted small">Pawns from your side. Win% ${g.win_before.toFixed(1)} → ${g.win_after.toFixed(1)} (−${drop})${card.occ.length > 1 ? ` · missed in ${card.occ.length} games` : ''}</p>
+    <p class="muted small">Pawns from your side. Win% ${g.win_before.toFixed(1)} → ${g.win_after.toFixed(1)} (−${drop})${leakCard ? ` · played in ${card.occ.length} games` : card.occ.length > 1 ? ` · missed in ${card.occ.length} games` : ''}</p>
     ${tags.length ? `<p class="tags">${tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</p>` : ''}
     <div class="stepper"><button class="step" id="start" aria-label="Back to the puzzle">↺</button><button class="step" id="prev" aria-label="Back">◀</button><button class="step" id="next" aria-label="Forward">▶</button></div>
     <p class="links"><a href="${esc(card.occ[0].link)}" target="_blank" rel="noopener">Open the game ↗</a><a href="${esc(analysis)}" target="_blank" rel="noopener">Analysis board ↗</a></p>`;
@@ -734,6 +790,18 @@ function measureAnswer() {
   const ess = document.getElementById('essential');
   const act = document.getElementById('actions');
   if (!ess || !act) return;
+  // No half line peeking out above the buttons: the first item below the
+  // must-see lines that doesn't fully fit starts just below the visible area.
+  const info = $('#info');
+  const fold = info.getBoundingClientRect().bottom;
+  for (const el of Array.from(info.children) as HTMLElement[]) {
+    if (el === ess) continue;
+    const r = el.getBoundingClientRect();
+    if (r.bottom > fold + 0.5) {
+      if (r.top < fold) el.style.marginTop = `${Math.ceil(fold - r.top + 12)}px`;
+      break;
+    }
+  }
   const end = Math.round(ess.getBoundingClientRect().bottom);
   const next = Math.round(act.getBoundingClientRect().top);
   answerFit = `lines end at y=${end}, Next area starts at y=${next} (${end <= next ? 'fits' : `${end - next}px hidden, scroll to see`})`;
@@ -750,8 +818,8 @@ async function renderGradeButtons() {
     const good = returnText(previewDue(app.sched, st, Rating.Good, now, card.id), now);
     const easy = returnText(previewDue(app.sched, st, Rating.Easy, now, card.id), now);
     box.innerHTML = `<div class="buttons">
-      <button id="easy" class="secondary">Too easy<small>Next: back ${esc(easy)}</small></button>
-      <button id="go" class="primary">Next<small>Next: back ${esc(good)}</small></button></div>`;
+      <button id="easy" class="secondary">Too easy<small>Back ${esc(easy)}</small></button>
+      <button id="go" class="primary">Next<small>Back ${esc(good)}</small></button></div>`;
     $('#easy').addEventListener('click', () => grade(card.id, Rating.Easy).then(showNext));
     $('#go').addEventListener('click', async () => {
       $('#go').setAttribute('disabled', '');

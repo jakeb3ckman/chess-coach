@@ -1,5 +1,5 @@
 {
- "_source": "Copied from the app card export (coach build --app-out) on 2026-11-14. Every position, solution and line is stored Stockfish 19 output: 1 thread, 16 MB hash, pass 2 at 2,000,000 nodes, MultiPV 2 (see data/analysis/); refutation lines from the refutation pass at 2,000,000 nodes (data/refutations/). Refreshed 2026-11-15 with the format-2 export.",
+ "_source": "Copied from the app card export (coach build --app-out) on 2026-11-14. Every position, solution and line is stored Stockfish 19 output: 1 thread, 16 MB hash, pass 2 at 2,000,000 nodes, MultiPV 2 (see data/analysis/); refutation lines from the refutation pass at 2,000,000 nodes (data/refutations/). Refreshed 2026-11-15 with the format-2 export. Leak cards (deck 'opening') added 2026-11-15 from the Phase 3 export: right answers and searched moves come from the position pass (data/positions/: Stockfish 19, 1 thread, 16 MB hash, MultiPV 5 at 5,000,000 nodes).",
  "format": 2,
  "cards": [
   {
@@ -230,6 +230,783 @@
      "at": "2026-11-02"
     }
    ]
+  },
+  {
+   "id": "ed2f9a9e2796",
+   "deck": "opening",
+   "fen": "rnbqkbnr/pppp1ppp/8/4p3/3P4/8/PPP1PPPP/RNBQKBNR w KQkq - 0 2",
+   "solution": "d4e5",
+   "line": "d4e5 h7h6 b1c3 b8c6 g1f3 f8b4 c1d2 d7d5 a2a3 b4a5",
+   "color": "white",
+   "prev": "e7e5",
+   "tags": [
+    "opening",
+    "repeated opening error"
+   ],
+   "best_eval": "+1.54",
+   "game": {
+    "move": "b1c3",
+    "eval": "+0.41",
+    "refutation": "e5d4 d1d4 b8c6 d4d3 g8f6 c1g5 h7h6 g5f6 d8f6",
+    "win_before": 63.8,
+    "win_after": 53.8,
+    "move_number": 2
+   },
+   "occ": [
+    {
+     "link": "https://www.chess.com/game/live/186217320930",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-30"
+    },
+    {
+     "link": "https://www.chess.com/game/live/186215238662",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-30"
+    },
+    {
+     "link": "https://www.chess.com/game/live/186211940188",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-30"
+    },
+    {
+     "link": "https://www.chess.com/game/live/186157119748",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-29"
+    },
+    {
+     "link": "https://www.chess.com/game/live/186148810766",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-29"
+    },
+    {
+     "link": "https://www.chess.com/game/live/186148417410",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-29"
+    },
+    {
+     "link": "https://lichess.org/Owb7njgi/white#2",
+     "site": "lichess",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-29"
+    },
+    {
+     "link": "https://www.chess.com/game/live/186117883328",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "rapid",
+     "at": "2026-10-28"
+    },
+    {
+     "link": "https://www.chess.com/game/live/186095119892",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-28"
+    },
+    {
+     "link": "https://www.chess.com/game/live/186067122158",
+     "site": "chesscom",
+     "move": "e2e3",
+     "drop": 11.7,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-27"
+    },
+    {
+     "link": "https://www.chess.com/game/live/186041387148",
+     "site": "chesscom",
+     "move": "g1f3",
+     "drop": 16.8,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-10-27"
+    },
+    {
+     "link": "https://www.chess.com/game/live/186010996662",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-27"
+    },
+    {
+     "link": "https://www.chess.com/game/live/186010935396",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-27"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185943101834",
+     "site": "chesscom",
+     "move": "g1f3",
+     "drop": 16.8,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-10-25"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185923290358",
+     "site": "chesscom",
+     "move": "g1f3",
+     "drop": 16.8,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-10-25"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185895403436",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-25"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185803430954",
+     "site": "chesscom",
+     "move": "g1f3",
+     "drop": 16.8,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-10-23"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185770846322",
+     "site": "chesscom",
+     "move": "e2e3",
+     "drop": 11.7,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-22"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185745451610",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-22"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185710371716",
+     "site": "chesscom",
+     "move": "g1f3",
+     "drop": 16.8,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-10-21"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185701838482",
+     "site": "chesscom",
+     "move": "g1f3",
+     "drop": 16.8,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-10-21"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185480610970",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-17"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185451798356",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-17"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185336967236",
+     "site": "chesscom",
+     "move": "e2e3",
+     "drop": 11.7,
+     "label": "mistake",
+     "tc": "blitz",
+     "at": "2026-10-14"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185312714788",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-14"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185218373950",
+     "site": "chesscom",
+     "move": "e2e3",
+     "drop": 11.7,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-12"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185215532420",
+     "site": "chesscom",
+     "move": "g1f3",
+     "drop": 16.8,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-10-12"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185184989942",
+     "site": "chesscom",
+     "move": "e2e3",
+     "drop": 11.7,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-11"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185155950814",
+     "site": "chesscom",
+     "move": "g1f3",
+     "drop": 16.8,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-10-11"
+    },
+    {
+     "link": "https://www.chess.com/game/live/172085364214",
+     "site": "chesscom",
+     "move": "e2e4",
+     "drop": 14.3,
+     "label": "mistake",
+     "tc": "blitz",
+     "at": "2026-07-26"
+    },
+    {
+     "link": "https://www.chess.com/game/live/168287410902",
+     "site": "chesscom",
+     "move": "e2e4",
+     "drop": 14.3,
+     "label": "mistake",
+     "tc": "rapid",
+     "at": "2026-05-05"
+    },
+    {
+     "link": "https://www.chess.com/game/live/168245980198",
+     "site": "chesscom",
+     "move": "g1f3",
+     "drop": 16.8,
+     "label": "blunder",
+     "tc": "rapid",
+     "at": "2026-05-04"
+    },
+    {
+     "link": "https://www.chess.com/game/live/167830602936",
+     "site": "chesscom",
+     "move": "g1f3",
+     "drop": 16.8,
+     "label": "blunder",
+     "tc": "rapid",
+     "at": "2026-04-26"
+    },
+    {
+     "link": "https://www.chess.com/game/live/167786396558",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "rapid",
+     "at": "2026-04-25"
+    },
+    {
+     "link": "https://www.chess.com/game/live/167710914246",
+     "site": "chesscom",
+     "move": "b1c3",
+     "drop": 10.0,
+     "label": "mistake",
+     "tc": "rapid",
+     "at": "2026-04-23"
+    },
+    {
+     "link": "https://www.chess.com/game/live/167691606248",
+     "site": "chesscom",
+     "move": "g1f3",
+     "drop": 16.8,
+     "label": "blunder",
+     "tc": "rapid",
+     "at": "2026-04-23"
+    },
+    {
+     "link": "https://www.chess.com/game/live/167663308218",
+     "site": "chesscom",
+     "move": "g1f3",
+     "drop": 16.8,
+     "label": "blunder",
+     "tc": "rapid",
+     "at": "2026-04-22"
+    },
+    {
+     "link": "https://www.chess.com/game/live/167622063186",
+     "site": "chesscom",
+     "move": "g1f3",
+     "drop": 16.8,
+     "label": "blunder",
+     "tc": "rapid",
+     "at": "2026-04-21"
+    },
+    {
+     "link": "https://www.chess.com/game/live/167028695522",
+     "site": "chesscom",
+     "move": "g1f3",
+     "drop": 16.8,
+     "label": "blunder",
+     "tc": "rapid",
+     "at": "2026-04-08"
+    },
+    {
+     "link": "https://lichess.org/b6wU6Ij0/white#2",
+     "site": "lichess",
+     "move": "g1f3",
+     "drop": 16.8,
+     "label": "blunder",
+     "tc": "rapid",
+     "at": "2026-04-08"
+    },
+    {
+     "link": "https://www.chess.com/game/live/166981723128",
+     "site": "chesscom",
+     "move": "g1f3",
+     "drop": 16.8,
+     "label": "blunder",
+     "tc": "rapid",
+     "at": "2026-04-07"
+    }
+   ],
+   "right": [
+    "d4e5"
+   ],
+   "alts": [
+    {
+     "u": "d4e5",
+     "behind": 0.0,
+     "eval": "+1.54"
+    },
+    {
+     "u": "b1c3",
+     "behind": 10.0,
+     "eval": "+0.41"
+    },
+    {
+     "u": "e2e3",
+     "behind": 11.7,
+     "eval": "+0.23"
+    },
+    {
+     "u": "c2c3",
+     "behind": 13.3,
+     "eval": "+0.05"
+    },
+    {
+     "u": "e2e4",
+     "behind": 14.3,
+     "eval": "-0.05"
+    },
+    {
+     "u": "g1f3",
+     "behind": 16.8,
+     "eval": "-0.32"
+    }
+   ]
+  },
+  {
+   "id": "d7655b18f99f",
+   "deck": "opening",
+   "fen": "rnbqkbnr/pppppp1p/6p1/8/4P3/5Q2/PPPP1PPP/RNB1KBNR b KQkq - 1 2",
+   "solution": "b8c6",
+   "line": "b8c6 b1c3 g8f6 c3d5 f8g7 c2c3 f6d5 e4d5 c6e5 f3d1",
+   "color": "black",
+   "prev": "d1f3",
+   "tags": [
+    "opening",
+    "repeated opening error"
+   ],
+   "best_eval": "+0.24",
+   "game": {
+    "move": "g8f6",
+    "eval": "-0.92",
+    "refutation": "e4e5 f6g8 d2d4 f8g7 c1f4 b8c6 f3e3 d7d6 g1f3",
+    "win_before": 52.2,
+    "win_after": 41.6,
+    "move_number": 2
+   },
+   "occ": [
+    {
+     "link": "https://www.chess.com/game/live/187124619058",
+     "site": "chesscom",
+     "move": "g8f6",
+     "drop": 10.6,
+     "label": "mistake",
+     "tc": "blitz",
+     "at": "2026-11-13"
+    },
+    {
+     "link": "https://www.chess.com/game/live/186560527898",
+     "site": "chesscom",
+     "move": "g8f6",
+     "drop": 10.6,
+     "label": "mistake",
+     "tc": "blitz",
+     "at": "2026-11-05"
+    },
+    {
+     "link": "https://www.chess.com/game/live/186455224506",
+     "site": "chesscom",
+     "move": "g8f6",
+     "drop": 10.6,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-11-03"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185690571772",
+     "site": "chesscom",
+     "move": "g8f6",
+     "drop": 10.6,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-21"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185611802832",
+     "site": "chesscom",
+     "move": "g8f6",
+     "drop": 10.6,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-20"
+    },
+    {
+     "link": "https://www.chess.com/game/live/172447796276",
+     "site": "chesscom",
+     "move": "f7f6",
+     "drop": 13.8,
+     "label": "mistake",
+     "tc": "rapid",
+     "at": "2026-08-02"
+    },
+    {
+     "link": "https://www.chess.com/game/live/168317845538",
+     "site": "chesscom",
+     "move": "f7f6",
+     "drop": 13.8,
+     "label": "mistake",
+     "tc": "rapid",
+     "at": "2026-05-06"
+    },
+    {
+     "link": "https://www.chess.com/game/live/168314398852",
+     "site": "chesscom",
+     "move": "f7f6",
+     "drop": 13.8,
+     "label": "mistake",
+     "tc": "rapid",
+     "at": "2026-05-06"
+    }
+   ],
+   "right": [
+    "b8c6",
+    "c7c5",
+    "d7d6",
+    "f8g7"
+   ],
+   "alts": [
+    {
+     "u": "b8c6",
+     "behind": 0.0,
+     "eval": "+0.24"
+    },
+    {
+     "u": "c7c5",
+     "behind": 0.5,
+     "eval": "+0.19"
+    },
+    {
+     "u": "d7d6",
+     "behind": 0.6,
+     "eval": "+0.17"
+    },
+    {
+     "u": "f8g7",
+     "behind": 0.9,
+     "eval": "+0.14"
+    },
+    {
+     "u": "c7c6",
+     "behind": 2.1,
+     "eval": "+0.01"
+    },
+    {
+     "u": "g8h6",
+     "behind": 7.5,
+     "eval": "-0.58"
+    },
+    {
+     "u": "g8f6",
+     "behind": 10.6,
+     "eval": "-0.92"
+    },
+    {
+     "u": "f7f6",
+     "behind": 13.8,
+     "eval": "-1.28"
+    }
+   ]
+  },
+  {
+   "id": "46c2f9526332",
+   "deck": "opening",
+   "fen": "rnbqkbnr/pp2pppp/2p5/3p4/3PP3/2N5/PPP2PPP/R1BQKBNR b KQkq - 1 3",
+   "solution": "d5e4",
+   "line": "d5e4 c3e4 g8f6 e4f6 e7f6 f1c4 a7a5 g1f3 f8d6 d1e2",
+   "color": "black",
+   "prev": "b1c3",
+   "tags": [
+    "opening",
+    "repeated opening error"
+   ],
+   "best_eval": "-0.17",
+   "game": {
+    "move": "b8d7",
+    "eval": "-1.68",
+    "refutation": "e4d5",
+    "win_before": 48.4,
+    "win_after": 35.0,
+    "move_number": 3
+   },
+   "occ": [
+    {
+     "link": "https://www.chess.com/game/live/186311299672",
+     "site": "chesscom",
+     "move": "c6c5",
+     "drop": 29.6,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-11-01"
+    },
+    {
+     "link": "https://www.chess.com/game/live/186253356180",
+     "site": "chesscom",
+     "move": "c6c5",
+     "drop": 29.6,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-10-31"
+    },
+    {
+     "link": "https://www.chess.com/game/live/186148995118",
+     "site": "chesscom",
+     "move": "c6c5",
+     "drop": 29.6,
+     "label": "blunder",
+     "tc": "bullet",
+     "at": "2026-10-29"
+    },
+    {
+     "link": "https://lichess.org/zLW3UiUB/black#5",
+     "site": "lichess",
+     "move": "b8d7",
+     "drop": 13.4,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-15"
+    },
+    {
+     "link": "https://www.chess.com/game/live/185212049112",
+     "site": "chesscom",
+     "move": "b8d7",
+     "drop": 13.4,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-12"
+    },
+    {
+     "link": "https://lichess.org/WN9KknN3/black#5",
+     "site": "lichess",
+     "move": "b8d7",
+     "drop": 13.4,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-10-10"
+    },
+    {
+     "link": "https://www.chess.com/game/live/184650121420",
+     "site": "chesscom",
+     "move": "c6c5",
+     "drop": 29.6,
+     "label": "blunder",
+     "tc": "blitz",
+     "at": "2026-10-01"
+    },
+    {
+     "link": "https://www.chess.com/game/live/184452537138",
+     "site": "chesscom",
+     "move": "b8d7",
+     "drop": 13.4,
+     "label": "mistake",
+     "tc": "rapid",
+     "at": "2026-09-27"
+    },
+    {
+     "link": "https://www.chess.com/game/live/174440357414",
+     "site": "chesscom",
+     "move": "b8d7",
+     "drop": 13.4,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-09-14"
+    },
+    {
+     "link": "https://www.chess.com/game/live/174394917878",
+     "site": "chesscom",
+     "move": "b8d7",
+     "drop": 13.4,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-09-13"
+    },
+    {
+     "link": "https://www.chess.com/game/live/174265151010",
+     "site": "chesscom",
+     "move": "b8d7",
+     "drop": 13.4,
+     "label": "mistake",
+     "tc": "blitz",
+     "at": "2026-09-10"
+    },
+    {
+     "link": "https://www.chess.com/game/live/173984266196",
+     "site": "chesscom",
+     "move": "b8d7",
+     "drop": 13.4,
+     "label": "mistake",
+     "tc": "bullet",
+     "at": "2026-09-04"
+    },
+    {
+     "link": "https://www.chess.com/game/live/172885823916",
+     "site": "chesscom",
+     "move": "e7e5",
+     "drop": 16.9,
+     "label": "blunder",
+     "tc": "blitz",
+     "at": "2026-08-12"
+    },
+    {
+     "link": "https://www.chess.com/game/live/172850802322",
+     "site": "chesscom",
+     "move": "e7e5",
+     "drop": 16.9,
+     "label": "blunder",
+     "tc": "blitz",
+     "at": "2026-08-11"
+    }
+   ],
+   "right": [
+    "d5e4"
+   ],
+   "alts": [
+    {
+     "u": "d5e4",
+     "behind": 0.0,
+     "eval": "-0.17"
+    },
+    {
+     "u": "a7a6",
+     "behind": 4.1,
+     "eval": "-0.62"
+    },
+    {
+     "u": "h7h6",
+     "behind": 5.0,
+     "eval": "-0.72"
+    },
+    {
+     "u": "e7e6",
+     "behind": 5.8,
+     "eval": "-0.81"
+    },
+    {
+     "u": "c8e6",
+     "behind": 7.5,
+     "eval": "-1.00"
+    },
+    {
+     "u": "g8f6",
+     "behind": 9.2,
+     "eval": "-1.19"
+    },
+    {
+     "u": "b8d7",
+     "behind": 13.4,
+     "eval": "-1.68"
+    },
+    {
+     "u": "e7e5",
+     "behind": 16.9,
+     "eval": "-2.10"
+    },
+    {
+     "u": "c6c5",
+     "behind": 29.6,
+     "eval": "-3.96"
+    }
+   ]
   }
- ]
+ ],
+ "opening_rules": {
+  "right_within": 2.0,
+  "playable_within": 5.0,
+  "leak_cards_per_day": 3
+ }
 }

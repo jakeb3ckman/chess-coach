@@ -15,13 +15,23 @@ function checkCard(c: CardsFile['cards'][number]) {
   const [from, to] = [c.solution.slice(0, 2), c.solution.slice(2, 4)];
   assert.ok(legalDests(c.fen).get(from)?.includes(to), `${c.id}: solution not offered on the board`);
   for (const o of c.occ) assert.ok(sanOf(c.fen, o.move), `${c.id}: game move illegal`);
-  assert.equal(c.game.move, c.occ[0].move, `${c.id}: game move is the latest occurrence's`);
+  if (c.deck === 'opening') {
+    // Leak card: the shown game move is the error move played most often; any listed move is right.
+    assert.ok(c.occ.some((o) => o.move === c.game.move), `${c.id}: game move not among the occurrences`);
+    assert.equal(c.right?.[0], c.solution, `${c.id}: the engine's best move must be the first right answer`);
+    for (const u of c.right ?? []) assert.ok(sanOf(c.fen, u), `${c.id}: right answer illegal`);
+    for (const a of c.alts ?? []) assert.ok(sanOf(c.fen, a.u), `${c.id}: searched move illegal`);
+    assert.ok(!c.right?.includes(c.game.move), `${c.id}: the error move is listed as right`);
+    for (const o of c.occ) assert.ok(!c.right?.includes(o.move), `${c.id}: an occurrence move is listed as right`);
+  } else {
+    assert.equal(c.game.move, c.occ[0].move, `${c.id}: game move is the latest occurrence's`);
+  }
   if (c.game.refutation) {
     const after = lineSteps(c.fen, c.game.move)[0].fenAfter;
     const ref = lineSteps(after, c.game.refutation);
     assert.equal(ref.length, c.game.refutation.split(' ').length, `${c.id}: refutation line not fully legal`);
   }
-  for (const t of c.tags) assert.ok(['opening', 'mate', 'allowed mate', 'thrown win', 'missed winning capture', 'hung piece', 'loses material'].includes(t), `${c.id}: unknown tag ${t}`);
+  for (const t of c.tags) assert.ok(['opening', 'mate', 'allowed mate', 'thrown win', 'missed winning capture', 'hung piece', 'loses material', 'repeated opening error'].includes(t), `${c.id}: unknown tag ${t}`);
   assert.match(c.best_eval, /^(-?M\d+|[+-]\d+\.\d\d)$/);
   assert.match(c.game.eval, /^(-?M\d+|[+-]\d+\.\d\d)$/);
   if (c.prev) {

@@ -248,12 +248,18 @@ def build_openings(games: list[dict], data_dir: Path, settings: dict, tactic_epd
         node = {"fen": b.fen(), "color": color, "me": me_to_move, "games": len({g["id"] for g, _ in oo}),
                 "path": _san_path(g0["_m"], i0), "name": name[1] if name else None, "moves": moves[:10]}
         if me_to_move:
+            # Side by side: my usual move, the best-scoring other move I've played
+            # (alt_min_games+), and the engine's best move if I've played it that often.
             usual = moves[0]
             alts = [m for m in moves[1:] if m["n"] >= os_["alt_min_games"] and m["score"] > usual["score"]]
-            if alts and usual["n"] >= os_["alt_min_games"]:
-                best_alt = max(alts, key=lambda m: m["score"])
-                node["compare"] = {"usual": usual["u"], "alt": best_alt["u"]}
+            cmp = {"usual": usual["u"], "alt": max(alts, key=lambda m: m["score"])["u"] if alts else None, "engine": None}
             pos = load_position(data_dir, epd) if node["games"] >= ps["min_games"] else None
+            if pos and pos["lines"][0][2]:
+                eb = pos["lines"][0][2].split()[0]
+                if eb not in (cmp["usual"], cmp["alt"]) and any(m["u"] == eb and m["n"] >= os_["alt_min_games"] for m in moves):
+                    cmp["engine"] = eb
+            if usual["n"] >= os_["alt_min_games"] and (cmp["alt"] or cmp["engine"]):
+                node["compare"] = cmp
             if pos:
                 sc = move_scores(pos)
                 best_score = pos["lines"][0][0]
@@ -286,13 +292,18 @@ def build_openings(games: list[dict], data_dir: Path, settings: dict, tactic_epd
                           "links": [game_link_at(g, i) for g, i in sorted(xs, key=lambda x: x[0]["ended_at"], reverse=True)[:3]],
                           "card": None}
                     if kind == "error":
-                        right = [u for u, d in behind.items() if d <= os_["right_within"]]
                         top_complete = len(pos["lines"]) < ps["multipv"] or behind[pos["lines"][-1][2].split()[0]] > os_["right_within"]
-                        if top_complete and epd not in tactic_epds and m["u"] not in right:
-                            card = _leak_card(b, epd, color, pos, sc, behind, m["u"], xs, os_, eval_text)
-                            lk["card"] = card["id"]
-                            cards.append((lk["total"], card))
+                        lk["no_card"] = ("a tactics card already covers this position" if epd in tactic_epds
+                                         else None if top_complete else "more than 4 moves are within 2 Win%")
                     leaks.append(lk)
+                # One leak card per position, covering every error move I played there.
+                errs = [lk for lk in leaks if lk["node"] == node_key(color, epd) and lk["kind"] == "error" and not lk.get("no_card")]
+                if errs:
+                    card = _leak_card(b, epd, color, pos, sc, behind, [lk["move"] for lk in errs],
+                                      [x for lk in errs for x in by_move[lk["move"]]], os_, eval_text)
+                    for lk in errs:
+                        lk["card"] = card["id"]
+                    cards.append((sum(lk["total"] for lk in errs), card))
         nodes[node_key(color, epd)] = node
 
     replies = []
@@ -315,13 +326,17 @@ def build_openings(games: list[dict], data_dir: Path, settings: dict, tactic_epd
     return out, [c for _, c in cards]
 
 
-def _leak_card(b: chess.Board, epd: str, color: str, pos: dict, sc: dict, behind: dict, leak: str,
+def _leak_card(b: chess.Board, epd: str, color: str, pos: dict, sc: dict, behind: dict, leak_moves: list[str],
                xs: list, os_: dict, eval_text) -> dict:
-    """A leak card in the app's card format (deck 'opening')."""
+    """A leak card in the app's card format (deck 'opening'). The game move shown
+    is the error move I played most often there; every occurrence of every error
+    move is listed, so any of them counts as a habit."""
     import hashlib
     from .classify import label as label_of
     best_score, _d, best_pv = pos["lines"][0]
     g, i = max(xs, key=lambda x: x[0]["ended_at"])
+    played = Counter(gg["_m"][ii] for gg, ii in xs)
+    leak = max(leak_moves, key=lambda u: (played[u], behind[u]))
     mine = sc[leak]
     ref = " ".join(mine["pv"].split()[1:]) or None
     labels = {"inaccuracy": 5.0, "mistake": 10.0, "blunder": 15.0}
@@ -338,8 +353,8 @@ def _leak_card(b: chess.Board, epd: str, color: str, pos: dict, sc: dict, behind
         "game": {"move": leak, "eval": eval_text(mine["score"], color), "refutation": ref,
                  "win_before": round(win_pct(best_score, color), 1), "win_after": round(win_pct(mine["score"], color), 1),
                  "move_number": b.fullmove_number},
-        "occ": [{"link": game_link_at(gg, ii), "site": gg["site"], "move": leak, "drop": behind[leak],
-                 "label": label_of(behind[leak], labels), "tc": gg["time_class"], "at": gg["ended_at"][:10]}
+        "occ": [{"link": game_link_at(gg, ii), "site": gg["site"], "move": gg["_m"][ii], "drop": behind[gg["_m"][ii]],
+                 "label": label_of(behind[gg["_m"][ii]], labels), "tc": gg["time_class"], "at": gg["ended_at"][:10]}
                 for gg, ii in sorted(xs, key=lambda x: x[0]["ended_at"], reverse=True)],
         "right": sorted((u for u, d in behind.items() if d <= os_["right_within"]), key=lambda u: behind[u]),
         "alts": [{"u": u, "behind": behind[u], "eval": eval_text(sc[u]["score"], color)}

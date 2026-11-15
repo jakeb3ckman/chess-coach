@@ -124,16 +124,23 @@ export function deriveSet(day: string, events: ReviewEvent[]): DaySet {
  */
 export function chooseSetCards(
   cards: AppCard[], states: Map<string, CardState>, now: Date, newLimit: number, exclude: Set<string> = new Set(),
+  openingLimit = Infinity, // new leak cards (deck 'opening') allowed in this pick
 ): { due: string[]; fresh: string[] } {
   const end = dayEnd(now).getTime();
   const today = dayKey(now);
   const due: { id: string; at: number }[] = [];
   const fresh: string[] = [];
+  let opening = 0;
   for (const c of cards) {
     if (exclude.has(c.id)) continue;
     const st = states.get(c.id);
     if (!st) {
-      if (fresh.length < newLimit) fresh.push(c.id);
+      if (fresh.length >= newLimit) continue;
+      if (c.deck === 'opening') {
+        if (opening >= openingLimit) continue;
+        opening++;
+      }
+      fresh.push(c.id);
     } else if (st.fsrs.dueAt.getTime() < end && st.last_sched_day !== today) {
       due.push({ id: c.id, at: st.fsrs.dueAt.getTime() });
     }
@@ -146,6 +153,13 @@ export function chooseSetCards(
 export function newStartedToday(states: Map<string, CardState>, day: string): number {
   let n = 0;
   for (const st of states.values()) if (dayKey(new Date(st.introduced_at)) === day) n++;
+  return n;
+}
+
+/** New cards of one deck started today. */
+export function newStartedTodayIn(states: Map<string, CardState>, day: string, ids: Set<string>): number {
+  let n = 0;
+  for (const st of states.values()) if (ids.has(st.card_id) && dayKey(new Date(st.introduced_at)) === day) n++;
   return n;
 }
 

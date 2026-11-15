@@ -393,8 +393,8 @@ def build_insights(games: list[dict], mistakes: list[dict], settings: dict) -> d
     ok = all(n >= MIN_MOVES for _, n in rates.values())
     lines.append({
         "id": "danger", "title": "Danger zone: where games turn",
-        "stat": "In positions still in the balance, you blunder " + ", ".join(
-            f"{_f(100 * x / n)} times per 100 moves in moves {b}" for b, (x, n) in rates.items()) + ".",
+        "stat": "Blunders per 100 moves, in positions still in the balance: " + ", ".join(
+            f"moves {b.replace('-', '–')}: {_f(100 * x / n)}" for b, (x, n) in rates.items()) + ".",
         "sample": f"{sum(n for _, n in rates.values()):,} moves in undecided positions",
         "detail": f"Moves {peak} vs moves 1-10: {100 * d:+.1f} per 100 moves (95% interval {100 * lo:+.1f} to {100 * hi:+.1f}, resampling whole games).",
         "status": "shown" if ok and lo > 0 else "checked", "tip": TIPS["danger"]})
@@ -523,4 +523,4 @@ def build_insights(games: list[dict], mistakes: list[dict], settings: dict) -> d
 
     return {"format": 1, "games": len(games), "lines": lines,
             "thresholds": {"games": MIN_GAMES, "moves": MIN_MOVES, "events": MIN_EVENTS,
-                           "comparisons": "shown only when the 95% interval of the difference excludes zero"}}
+                           "comparisons": "the 95% interval of the difference excludes zero"}}

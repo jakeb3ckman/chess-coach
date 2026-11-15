@@ -42,11 +42,12 @@ html, body {
      The bottom one is applied by #actions so the button sits just above the home indicator. */
   padding: var(--top-pad) env(safe-area-inset-right) 0 env(safe-area-inset-left);
 }
-/* The top strip holds only the gear. */
-#bar { height: var(--bar-h); flex: none; display: flex; align-items: center; justify-content: flex-end; padding: 0 4px; }
-#menu {
-  flex: none; background: none; border: 0; color: var(--muted); font-size: 22px; width: 44px; height: 44px; cursor: pointer;
-}
+/* The top strip stays empty: iOS blurs it. */
+#bar { height: var(--bar-h); flex: none; }
+/* The menu: a fifth, narrower tile in the counts row. */
+.cnt.menu { flex: 0 0 52px; background: none; border: 0; padding: 0; font: inherit; cursor: pointer; --tile: #3a3835; }
+.cnt.menu b { font-size: 18px; color: var(--text); }
+#counts.thin .cnt.menu { flex-basis: 56px; }
 /* The four counts, directly under the board. Full tiles while a card is asked;
    one thin row on the answer screen. Each tile's colour is --tile. */
 #counts { flex: none; display: flex; gap: 8px; padding: 8px var(--side); }
@@ -91,7 +92,7 @@ html, body {
 .small { font-size: 13px; }
 .bad { color: #ef6b61; }
 .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 4px; }
-.row .what { min-width: 0; }
+.row .what { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row .ev { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; }
 .moves { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding: 3px 0 5px; min-width: 0; }
 .moves::-webkit-scrollbar { display: none; }
@@ -153,3 +154,52 @@ cg-board square.last-move { background-color: rgba(155, 199, 0, .41); }
 .cg-wrap coords.ranks { left: 0; top: 0; height: 100%; width: auto; }
 .cg-wrap coords.ranks coord { transform: none; padding: 2px 0 0 2px; }
 dialog { max-height: calc(100dvh - 40px); overflow-y: auto; }
+
+/* Dialogs (Settings, menu) open below the blurred top strip and scroll inside
+   their own box, so nothing in them ever scrolls under the status bar. */
+dialog {
+  margin: calc(var(--top-pad) + var(--bar-h)) auto auto;
+  max-height: calc(100dvh - var(--top-pad) - var(--bar-h) - var(--bottom-pad) - 16px);
+}
+#menu-sheet { width: min(92vw, 360px); padding: 12px; }
+.menu-list { display: flex; flex-direction: column; gap: 8px; }
+.menu-list button.secondary { height: 52px; border-radius: 10px; font: inherit; font-size: 17px; font-weight: 600; color: var(--text); background: var(--bg); border: 1px solid #555; }
+
+/* Openings and Insights pages: they replace the board screen and scroll inside
+   #page-body, which starts below the top strip. */
+#app.paged #board-wrap, #app.paged #counts, #app.paged #banner, #app.paged #panel,
+#app.paged #hint, #app.paged #syncmsg { display: none !important; }
+#page { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+#page[hidden] { display: none; }
+.page-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 0 var(--side) 6px; min-height: 40px; }
+.page-head h2 { flex: 1; margin: 0; font-size: 20px; }
+.page-head .link { padding: 8px 0; font-size: 16px; }
+#page-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0 var(--side) calc(16px + var(--bottom-pad)); }
+#page-body h3 { font-size: 16px; margin: 18px 0 6px; }
+#page-body h3:first-child { margin-top: 4px; }
+.seg.small button { height: 32px; font-size: 13px; }
+.list { display: flex; flex-direction: column; gap: 6px; }
+.item { background: var(--panel); border-radius: 10px; padding: 10px 12px; text-align: left; color: var(--text); border: 0; font: inherit; width: 100%; }
+button.item { cursor: pointer; }
+.item .top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.item .name { font-weight: 600; min-width: 0; }
+.item .num { flex: none; font-variant-numeric: tabular-nums; }
+.item .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+.pair > div { background: var(--bg); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+.pair b { font-size: 15px; }
+.badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 8px; background: #45423e; color: #fff; margin-left: 4px; vertical-align: middle; }
+.badge.err { background: #9e3a33; }
+.badge.rep { background: #6b5a2a; }
+.mini-board { width: min(100%, 300px); aspect-ratio: 1; margin: 4px auto 8px; }
+.tree-moves .item { display: grid; grid-template-columns: 4.5em 1fr auto; gap: 8px; align-items: center; padding: 8px 12px; }
+.tree-moves .item .mv-san { font-weight: 700; }
+.fact { background: var(--panel); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+.fact h4 { margin: 0 0 6px; font-size: 15px; }
+.fact .stat { margin: 0; }
+.fact .samp { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+.fact .det { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
+.tip { margin-top: 10px; padding: 8px 10px; border-left: 3px solid #8fb3e0; background: #2a3440; border-radius: 0 8px 8px 0; font-size: 14px; }
+.tip .tl { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #8fb3e0; margin-bottom: 2px; }
+details.checked summary { cursor: pointer; color: var(--muted); padding: 8px 0; }
+.trend { width: 100%; height: auto; display: block; margin: 6px 0; }

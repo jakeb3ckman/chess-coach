@@ -64,6 +64,12 @@ function finish(id) {
   const cards = cardsArg ?? join(here, '..', 'data', 'derived', 'app-cards.json');
   if (existsSync(cards)) cpSync(cards, join(dist, 'data', 'cards.json'));
   else console.warn(`no card file at ${cards}; run: uv run python -m coach build --app-out data/derived/app-cards.json`);
+  // Phase 3: the Openings and Insights files, written next to the card file by the same build.
+  for (const name of ['openings', 'insights']) {
+    const f = join(dirname(cards), `app-${name}.json`);
+    if (existsSync(f)) cpSync(f, join(dist, 'data', `${name}.json`));
+    else console.warn(`no ${name} file at ${f}`);
+  }
   // Every published HTML page must carry noindex (spec section 2).
   for (const f of readdirSync(dist).filter((f) => f.endsWith('.html'))) {
     if (!readFileSync(join(dist, f), 'utf8').includes('<meta name="robots" content="noindex, nofollow">')) {

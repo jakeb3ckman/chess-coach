@@ -31,11 +31,22 @@ export interface AppCard {
   tags: string[];
   game: GameMove;
   occ: Occurrence[]; // newest first
+  // Leak cards only (deck 'opening', Phase 3): moves within right_within Win% of the
+  // best (best first), and every move the position pass searched, with Win% behind best.
+  right?: string[];
+  alts?: { u: string; behind: number; eval: string }[];
+}
+
+export interface OpeningRules {
+  right_within: number; // a move this close to the best (Win%) is right
+  playable_within: number; // this close: "playable, but there's better"
+  leak_cards_per_day: number; // new leak cards a day, inside the daily new-card limit
 }
 
 export interface CardsFile {
   format: number;
   cards: AppCard[];
+  opening_rules?: OpeningRules;
 }
 
 export type Status = 'remaining' | 'missed' | 'unsure' | 'known';
