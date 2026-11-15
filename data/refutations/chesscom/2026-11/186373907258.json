@@ -1,0 +1,1 @@
+{"format":1,"engine":{"name":"Stockfish 19","threads":1,"hash_mb":16,"nodes":2000000},"after":{"10":[83,23,"e6e5 e2e4"],"16":[452,21,"c8f5 e2e4 f5e4 d3h3 h7h5 f1e2 e4f5 g2g4 f5c2 c7a5"],"22":[-2,26,"f8b4 c3b4"],"28":[489,21,"f8b4 e2c3 g8e7 c6b7 b4c3 b2c3 c2a3 b5e2 h8e8 g2g4"],"34":[311,23,"e7d5 b7d5"],"36":[255,23,"e7d5 b7d5"],"48":[29,21,"b4a2 c3b3"]},"secs":19.59}
