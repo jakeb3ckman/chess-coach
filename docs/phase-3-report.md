@@ -343,3 +343,41 @@ Each would move up with its tip if a pattern became clear.
 4. **Rating details:**
    - **Lichess "now":** Lichess files store the rating *before* each game, so "now" doesn't include your last Lichess game's change.
    - **Chess.com opponents:** Chess.com stores ratings *after* the game, so opponent ratings in the performance figure are a few points off their pre-game values.
+
+## 13. Fix: board ignored taps after Resume (version 2.5.2, 2026-11-16)
+
+**What you saw:** after "Finish later" under 2.5.0, the update to 2.5.1, and Resume, the board ignored every tap and drag, while the Menu tile still worked. Closing and reopening the app fixed it.
+
+**Cause:** chessground, the board library, attaches its touch and mouse handlers only when it builds the board. It skips them if the board is in "view only" mode at that moment. Up to 2.5.1, two things combined:
+- the "Set saved" and "Set complete" screens put the board in view-only mode;
+- the next card's setup turned the board to the card's colour *before* turning view-only off, and turning the board rebuilds it.
+
+So the board was rebuilt without handlers.
+
+**Why it showed after the update:** the update restarted the app, and a restarted app's board faces White. Your next card was Black, so Resume turned the board. Reopening the app went straight to the card, without the view-only screen, so it worked.
+
+**Any restart had the same effect, not only an update.** The update just made it likely. Two other paths also hit it:
+- "Start another set" when the new set's first card was the other colour from the last card;
+- opening the Menu on "Set saved" or "Set complete", then going back to Train.
+
+Your saved set and reviews were never affected.
+
+**Fix** (in `app/src/board.ts`):
+- The trainer board is never put in view-only mode. Between cards it simply has no side that can move, as on the answer screen.
+- If the board is ever found in view-only mode, the next card rebuilds it after turning view-only off.
+
+**Tested:**
+- **Reproduced first, in the browser at 393×852 with real taps** (not the test shortcut): "Finish later", reload (as the update does), Resume onto a Black card. Under 2.5.1 the board ignored the taps.
+- **Same steps under 2.5.2:** the taps played the move and the card was solved.
+- **Plain Finish later and Resume within one version:** works. This run also opened the Menu, went to Openings and came back while the set was saved, then played the next card with real taps.
+- **Taps on the "Set saved" board:** they do nothing.
+- **App tests: 37** (5 new, in `test/board.test.ts`):
+  - a set saved before an update takes a move after Resume (a restarted board facing White, next card Black, set rebuilt from saved events);
+  - Finish later and Resume within one version, for both colours;
+  - opening the Menu while idle;
+  - the 2.5.1 sequence reproduces the bug;
+  - the installed chessground still has the two rules the tests copy.
+
+  Node has no browser here, and installing a browser library for tests was blocked, so these tests run chessground as a stand-in with the same two rules. The last test reads chessground's installed code, so it fails if a chessground update changes either rule.
+
+**Not tested:** on your iPhone.

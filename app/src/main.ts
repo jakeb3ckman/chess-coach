@@ -16,6 +16,7 @@ import { DEFAULT_RULES, judge, rightMoves } from './leak.ts';
 import { filterOk, filterOptions, type FilterOption, type NewFilter } from './filter.ts';
 import { cleanSolves, secs } from './times.ts';
 import { openPage, closePage } from './pages.ts';
+import * as board from './board.ts';
 import {
   applyEvent, getScheduler, previewDue, Rating, replayCard, scheduledToday, type CardState, type Scheduler,
 } from './scheduler.ts';
@@ -484,7 +485,7 @@ async function showNext() {
 function idleBoard() {
   app.sh = undefined;
   countsThin(false);
-  app.cg.set({ viewOnly: true, movable: { color: undefined, dests: new Map() }, drawable: { autoShapes: [] } });
+  board.idle(app.cg);
 }
 
 async function firstTryRate(): Promise<{ rate: number; n: number }> {
@@ -618,15 +619,13 @@ function afterGameMove(card: AppCard): string {
 
 function setPosition(fen: string, lastMoveUci: string | null, playable: boolean, shapes: DrawShape[] = []) {
   const card = app.sh!.card;
-  app.cg.set({
-    fen,
-    orientation: card.color,
-    turnColor: fen.split(' ')[1] === 'w' ? 'white' : 'black',
+  board.show(app.cg, {
+    fen, orientation: card.color,
     lastMove: lastMoveUci ? (uciSquares(lastMoveUci) as Key[]) : undefined,
     check: inCheck(fen),
-    viewOnly: false,
-    movable: playable ? { color: card.color, dests: legalDests(fen) as Map<Key, Key[]> } : { color: undefined, dests: new Map() },
-    drawable: { autoShapes: shapes },
+    movable: playable ? card.color : undefined,
+    dests: legalDests(fen) as Map<Key, Key[]>,
+    shapes,
   });
 }
 
