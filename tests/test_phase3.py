@@ -169,6 +169,10 @@ def test_leaks_and_leak_cards_follow_the_stored_scores(tmp_path, settings):
         assert c["game"]["move"] not in c["right"]
         assert all(a["behind"] <= os_["right_within"] for a in c["alts"] if a["u"] in c["right"])
         assert all(chess.Move.from_uci(a["u"]) in chess.Board(c["fen"]).legal_moves for a in c["alts"])
+        # My record with the shown move: one result per game where I played it there.
+        r = c["game"]["record"]
+        games_with = {o["link"] for o in c["occ"] if o["move"] == c["game"]["move"]}
+        assert r["w"] + r["d"] + r["l"] == len(games_with)
     # Progress: every leak position is placed in a group, and its counts add up.
     placed = [l for col in out["groups"].values() for r in col for l in r["progress"]["leaks"]]
     assert {l["node"] for l in placed} == {lk["node"] for lk in out["leaks"]}

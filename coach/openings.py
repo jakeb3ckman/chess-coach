@@ -428,6 +428,8 @@ def _leak_card(b: chess.Board, epd: str, color: str, pos: dict, sc: dict, behind
     leak = max(leak_moves, key=lambda u: (played[u], behind[u]))
     mine = sc[leak]
     ref = " ".join(mine["pv"].split()[1:]) or None
+    # My results in the games where I played the shown move here (one count per game).
+    res = Counter({gg["id"]: gg["my_result"] for gg, ii in xs if gg["_m"][ii] == leak}.values())
     labels = {"inaccuracy": 5.0, "mistake": 10.0, "blunder": 15.0}
     return {
         "id": hashlib.sha1(f"{epd}|leak".encode()).hexdigest()[:12],
@@ -441,7 +443,8 @@ def _leak_card(b: chess.Board, epd: str, color: str, pos: dict, sc: dict, behind
         "best_eval": eval_text(best_score, color),
         "game": {"move": leak, "eval": eval_text(mine["score"], color), "refutation": ref,
                  "win_before": round(win_pct(best_score, color), 1), "win_after": round(win_pct(mine["score"], color), 1),
-                 "move_number": b.fullmove_number},
+                 "move_number": b.fullmove_number,
+                 "record": {"w": res["win"], "d": res["draw"], "l": res["loss"]}},
         "occ": [{"link": game_link_at(gg, ii), "site": gg["site"], "move": gg["_m"][ii], "drop": behind[gg["_m"][ii]],
                  "label": label_of(behind[gg["_m"][ii]], labels), "tc": gg["time_class"], "at": gg["ended_at"][:10]}
                 for gg, ii in sorted(xs, key=lambda x: x[0]["ended_at"], reverse=True)],

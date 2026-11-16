@@ -125,6 +125,7 @@ export function deriveSet(day: string, events: ReviewEvent[]): DaySet {
 export function chooseSetCards(
   cards: AppCard[], states: Map<string, CardState>, now: Date, newLimit: number, exclude: Set<string> = new Set(),
   openingLimit = Infinity, // new leak cards (deck 'opening') allowed in this pick
+  freshOk: (c: AppCard) => boolean = () => true, // which new cards may be picked (colour/opening choice); due cards always are
 ): { due: string[]; fresh: string[] } {
   const end = dayEnd(now).getTime();
   const today = dayKey(now);
@@ -135,7 +136,7 @@ export function chooseSetCards(
     if (exclude.has(c.id)) continue;
     const st = states.get(c.id);
     if (!st) {
-      if (fresh.length >= newLimit) continue;
+      if (fresh.length >= newLimit || !freshOk(c)) continue;
       if (c.deck === 'opening') {
         if (opening >= openingLimit) continue;
         opening++;

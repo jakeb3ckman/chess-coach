@@ -76,7 +76,7 @@ def load_games(store) -> list[dict]:
         end = _dt(g["ended_at"])
         mine_r, opp_r = g[me].get("rating"), g[opp].get("rating")
         exp = 1 / (1 + 10 ** ((opp_r - mine_r) / 400)) if mine_r and opp_r else None
-        out.append({"id": g["id"], "url": g["url"], "tc": g["time_class"], "base": g["base_s"], "color": me,
+        out.append({"id": g["id"], "url": g["url"], "tc": g["time_class"], "base": g["base_s"], "inc": g["inc_s"], "color": me,
                     "expected": exp, "site": g["site"],
                     "result": g["my_result"], "termination": g["termination"], "end": end,
                     "start": end - timedelta(seconds=game_duration_s(g)), "mine": mine, "theirs": theirs})
@@ -520,6 +520,10 @@ def build_insights(games: list[dict], mistakes: list[dict], settings: dict) -> d
                       "sample": f"{len(games):,} games",
                       "detail": "Expected score from the Elo formula on the two ratings stored with each game; 95% intervals.",
                       "status": "shown" if clear_ else "checked", "tip": TIPS[lid] if clear_ else None})
+
+    # ---- clock diagnostics (added 2026-11-16): coach/clock.py
+    from .clock import clock_lines
+    lines.extend(clock_lines(games))
 
     return {"format": 1, "games": len(games), "lines": lines,
             "thresholds": {"games": MIN_GAMES, "moves": MIN_MOVES, "events": MIN_EVENTS,

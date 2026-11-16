@@ -195,6 +195,9 @@ def build_all(store: Store, settings: dict, app_out=None) -> dict:
     analyzed = [g for g in store.iter_games() if store.has_analysis(g)]
     openings, leak_cards = build_openings(analyzed, store.data, settings, tactic_epds)
     insights = build_insights(load_games(store), mistakes, settings)
+    if "progress" in openings:  # rating lines use every stored game, analyzed or not
+        from .ratings import rating_lines
+        openings["progress"]["ratings"] = rating_lines(list(store.iter_games()), settings)
     Store.write_json_atomic(store.derived / "openings.json", openings)
     Store.write_json_atomic(store.derived / "insights.json", insights)
     if app_out is not None:

@@ -5,7 +5,7 @@ import type { Api } from '@lichess-org/chessground/api';
 import type { Key } from '@lichess-org/chessground/types';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import {
-  allEvents, eventsForDay, getMeta, loadLegacySet, loadStates, openDb, outboxCount, replaceStates, saveAll, setMeta,
+  allEvents, eventsForCard, eventsForDay, getMeta, loadLegacySet, loadStates, openDb, outboxCount, replaceStates, saveAll, setMeta,
 } from './db.ts';
 import { dayKey, returnText } from './day.ts';
 import {
@@ -13,6 +13,8 @@ import {
   newStartedToday, newStartedTodayIn, nextStatus, type DaySet,
 } from './session.ts';
 import { DEFAULT_RULES, judge, rightMoves } from './leak.ts';
+import { filterOk, filterOptions, type FilterOption, type NewFilter } from './filter.ts';
+import { cleanSolves, secs } from './times.ts';
 import { openPage, closePage } from './pages.ts';
 import {
   applyEvent, getScheduler, previewDue, Rating, replayCard, scheduledToday, type CardState, type Scheduler,
@@ -40,6 +42,7 @@ interface Showing {
   done: boolean;
   shownAt: number;
   attempt?: string; // last move tried
+  clean?: { id: string; ms: number }; // right on the first try (no hint, solution or miss before it)
   lines: { best: LineStep[]; ref: LineStep[] };
   view: { line: 'best' | 'ref'; idx: number };
 }
@@ -63,6 +66,7 @@ interface App {
   // then it is provisional, so a device that turns on sync before answering
   // anything simply joins the set the other device already started.
   pendingSet?: ReviewEventV2;
+  filter: NewFilter; // which new cards the next set takes (All by default; kept for the study day)
 }
 
 let app: App;
@@ -229,7 +233,10 @@ async function start() {
     rules: file.opening_rules ?? DEFAULT_RULES,
     openingIds: new Set(file.cards.filter((c) => c.deck === 'opening').map((c) => c.id)),
     set: deriveSet(today, dayEvents), cg, reloadWhenIdle: false,
+    filter: 'all',
   };
+  const nf = await getMeta<{ day: string; value: NewFilter }>(db, 'new_filter');
+  if (nf?.day === today) app.filter = nf.value;
   // The menu is a tile in the counts row (nothing tappable sits in the top strip, which iOS blurs).
   $('#counts').addEventListener('click', (e) => {
     if ((e.target as HTMLElement).closest('#menu')) openMenu();
@@ -388,12 +395,13 @@ async function ensureToday() {
   if (app.today !== today) {
     app.today = today;
     app.pendingSet = undefined;
+    app.filter = 'all'; // the choice lasts one study day
     app.dayEvents = await eventsForDay(app.db, today);
     rederive();
   }
   if (app.set.round === 0) {
     const allowed = Math.max(0, NEW_PER_DAY - newStartedToday(app.states, today));
-    const pick = chooseSetCards(app.cards, app.states, now, allowed, cardsInTodaysSets(), openingAllowed(today));
+    const pick = chooseSetCards(app.cards, app.states, now, allowed, cardsInTodaysSets(), openingAllowed(today), filterOk(app.filter));
     const ids = [...pick.due, ...pick.fresh];
     if (ids.length) {
       app.pendingSet = setEvent(1, ids); // provisional until the first answer
@@ -401,6 +409,24 @@ async function ensureToday() {
       rederive();
     }
   }
+}
+
+/** Remember the choice of new cards for the rest of the study day. */
+async function setFilter(value: NewFilter) {
+  app.filter = value;
+  await setMeta(app.db, 'new_filter', { day: app.today, value });
+}
+
+/** "New cards: All / White / Black / an opening" (due reviews always come). */
+function filterSelect(): string {
+  const opts = filterOptions(app.cards, (id) => app.states.has(id));
+  if (!opts[0].fresh) return '';
+  if (!opts.some((o) => o.value === app.filter)) opts.push({ value: app.filter, label: 'Earlier choice', fresh: 0 });
+  const opt = (o: FilterOption) => `<option value="${esc(o.value)}"${o.value === app.filter ? ' selected' : ''}>${esc(o.label)} · ${o.fresh.toLocaleString()} new</option>`;
+  const grp = (c: 'white' | 'black') => `<optgroup label="Openings as ${c === 'white' ? 'White' : 'Black'}">${opts.filter((o) => o.group === c).map(opt).join('')}</optgroup>`;
+  return `<label class="nf">New cards
+    <select id="nf">${opts.filter((o) => !o.group).map(opt).join('')}${grp('white')}${grp('black')}</select></label>
+    <p class="muted small nf-note">Applies to new cards only; reviews that are due always come.</p>`;
 }
 
 /** New leak cards still allowed today (at most leak_cards_per_day, inside the 10 new). */
@@ -477,7 +503,7 @@ async function showComplete() {
   idleBoard();
   renderCounts();
   const set = app.set;
-  const pick = chooseSetCards(app.cards, app.states, new Date(), EXTRA_SET_NEW, cardsInTodaysSets(), openingAllowed(app.today));
+  const pick = chooseSetCards(app.cards, app.states, new Date(), EXTRA_SET_NEW, cardsInTodaysSets(), openingAllowed(app.today), filterOk(app.filter));
   const more = pick.due.length + pick.fresh.length;
   let html: string;
   if (set.cards.length === 0) {
@@ -502,9 +528,13 @@ async function showComplete() {
     }
     html += `</div>`;
   } else if (set.cards.length) {
-    html += `<p class="muted">No more cards right now. The next set is ready tomorrow after 4 a.m.</p>`;
+    html += `<p class="muted">No more cards right now${app.filter === 'all' ? '' : ' with this choice of new cards'}. The next set is ready tomorrow after 4 a.m.</p>`;
   }
-  $('#info').innerHTML = html;
+  $('#info').innerHTML = html + filterSelect();
+  $('#info').querySelector<HTMLSelectElement>('#nf')?.addEventListener('change', async (e) => {
+    await setFilter((e.target as HTMLSelectElement).value);
+    showComplete();
+  });
   $('#actions').innerHTML = more ? `<div class="buttons"><button id="another" class="primary">Start another set</button></div>` : '';
   $('#another')?.addEventListener('click', async () => {
     $('#another').setAttribute('disabled', '');
@@ -561,7 +591,18 @@ function showCard(card: AppCard) {
   const k = card.occ.length;
   $('#info').innerHTML = `
     <p class="muted">${where} · from your ${esc(card.occ[0].tc)} game, ${esc(card.occ[0].at)}${k > 1 ? ` · missed in ${k} games` : ''}</p>
-    <p id="toolnote" class="muted"></p>`;
+    <p id="toolnote" class="muted"></p>
+    ${app.pendingSet ? filterSelect() : ''}`;
+  // The day's first set isn't saved until the first answer, so it can still be re-chosen.
+  $('#info').querySelector<HTMLSelectElement>('#nf')?.addEventListener('change', async (e) => {
+    await setFilter((e.target as HTMLSelectElement).value);
+    if (!app.pendingSet || app.sh?.attempts) return;
+    const p = app.pendingSet;
+    app.pendingSet = undefined;
+    app.dayEvents = app.dayEvents.filter((x) => x !== p);
+    rederive();
+    showNext();
+  });
   $('#actions').innerHTML = `<p class="later"><button id="later" class="link">Finish later</button></p>`;
   $('#later').addEventListener('click', finishLater);
 }
@@ -645,7 +686,9 @@ async function onMove(orig: Key, dest: Key) {
     if (!sh.failed) {
       const status = nextStatus(app.set.status[card.id] ?? 'remaining', true);
       if (sh.first) await setMeta(app.db, 'pending_grade', { day: app.today, card: card.id }); // Next / Too easy decides
-      await commit([ev('move', { attempt: sh.attempts, move_played: uci, correct: true, status_after: status })]);
+      const e = ev('move', { attempt: sh.attempts, move_played: uci, correct: true, status_after: status });
+      if (sh.attempts === 1 && !sh.hinted) sh.clean = { id: e.id, ms: e.ms! };
+      await commit([e]);
     } else {
       await commit([ev('move', { attempt: sh.attempts, move_played: uci, correct: true, status_after: 'missed' })]);
     }
@@ -752,8 +795,11 @@ async function showAnswer() {
   const played = leakCard
     ? `You usually play <b>${esc(gameSan)}</b> (${card.occ.filter((o) => o.move === g.move).length}×)`
     : `You played <b>${esc(gameSan)}</b>`;
+  const r = leakCard ? g.record : undefined;
+  const recLine = r ? `<div class="rec">Your results with ${esc(gameSan)}: ${plural(r.w, 'win')}, ${plural(r.d, 'draw')}, ${plural(r.l, 'loss', 'losses')}</div>` : '';
+  if (sh.clean) void showTime(sh, sh.clean);
 
-  const tags = [...card.tags];
+  const tags = [card.color === 'white' ? 'White' : 'Black', ...card.tags];
   if (st && st.habit > 0) tags.push(`habit ×${st.habit}`);
   const analysis = `https://lichess.org/analysis/standard/${card.fen.replace(/ /g, '_')}?color=${card.color}`;
   const drop = (g.win_before - g.win_after).toFixed(1);
@@ -767,9 +813,10 @@ async function showAnswer() {
       <div class="moves">${lineChips('best')}</div>
       <div class="row"><span class="what">${played}${sh.lines.ref.length ? ', refuted by' : ''}</span><span class="ev">${esc(evalWords(g.eval))}</span></div>
       ${refChips}
+      ${recLine}
     </div>
     <p class="muted small">Pawns from your side. Win% ${g.win_before.toFixed(1)} → ${g.win_after.toFixed(1)} (−${drop})${leakCard ? ` · played in ${card.occ.length} games` : card.occ.length > 1 ? ` · missed in ${card.occ.length} games` : ''}</p>
-    ${tags.length ? `<p class="tags">${tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</p>` : ''}
+    <p class="tags">${tags.map((t, i) => `<span class="tag${i === 0 ? ` side ${card.color}` : ''}">${esc(t)}</span>`).join('')}</p>
     <div class="stepper"><button class="step" id="start" aria-label="Back to the puzzle">↺</button><button class="step" id="prev" aria-label="Back">◀</button><button class="step" id="next" aria-label="Forward">▶</button></div>
     <p class="links"><a href="${esc(card.occ[0].link)}" target="_blank" rel="noopener">Open the game ↗</a><a href="${esc(analysis)}" target="_blank" rel="noopener">Analysis board ↗</a></p>`;
   $('#info').scrollTop = 0;
@@ -781,6 +828,17 @@ async function showAnswer() {
   await renderGradeButtons();
   view('best', sh.revealed || sh.failed ? -1 : 0);
   requestAnimationFrame(measureAnswer);
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** After a clean solve: this time and the card's best clean time (all devices' synced reviews). */
+async function showTime(sh: Showing, clean: { id: string; ms: number }) {
+  const prev = cleanSolves(await eventsForCard(app.db, sh.card.id)).filter((x) => x.id !== clean.id).map((x) => x.ms);
+  const best = prev.length ? Math.min(...prev) : null;
+  if (app.sh !== sh) return;
+  const t = best === null ? 'first clean solve' : clean.ms < best ? `new best, was ${secs(best)}` : `best ${secs(best)}`;
+  $('#banner').insertAdjacentHTML('beforeend', `<span class="time">${secs(clean.ms)} · ${t}</span>`);
 }
 
 /** Where the answer screen's lines end and the Next button starts, for the

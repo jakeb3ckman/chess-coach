@@ -253,3 +253,95 @@ Each would move up with its tip if a pattern became clear.
 - Live: version 2.4.1; `openings.json` carries the progress data for all 168 leak positions; all 2,587 cards carry their opening.
 
 **Not tested:** the section on your iPhone with your real reviews. Those counts exist only on the device.
+
+## 12. Six additions for this week's testing (version 2.5.0, 2026-11-16)
+
+**Your data:** no database change and no event-format change, so there was nothing to migrate. The only new stored item is the choice of new cards, kept on the device for the study day. It is not an event and is never synced or published. No new engine work: everything comes from stored games, stored Stockfish output and your reviews on the device.
+
+### What changed
+
+1. **Your record on leak cards.** Under "You usually play f3 (13×)" a new line reads "Your results with f3: 2 wins, 1 draw, 10 losses". It counts one result per game where you played that move in that position, so the three numbers add up to the 13×.
+2. **Colour tag.** Every card's tag row now starts with a "White" or "Black" tag, styled as a light or dark chip.
+3. **Train by colour or opening.**
+   - **Choices:** a "New cards" menu with All (the default), White, Black, then every opening group that still has new cards, listed under "Openings as White" and "Openings as Black". Each choice shows how many new cards it has.
+   - **Only new cards are filtered.** Every due review still comes, and the 3-a-day cap on new leak cards still applies.
+   - **Where the menu appears:**
+     - on the first card of the day, until you answer it (the day's first set isn't saved until then, so it can still be re-picked);
+     - on the "Set complete" screen, before "Start another set".
+   - **How long it lasts:** the choice stays for the rest of the study day, and the next day starts at All again.
+4. **Clock lines on the Insights screen.** Five lines, with definitions and results below.
+5. **Answer time on clean solves.**
+   - No timer is shown while you solve.
+   - After a clean solve, the banner shows your time and your best for that card, for example "4.2 s · best 3.1 s", "3.1 s · new best, was 4.2 s", or "first clean solve".
+   - A clean solve is a showing whose first event is the right move.
+   - Times come from the `ms` field the app already logs, on all synced devices. Retries and hinted answers show no time and never count toward a best.
+6. **Rating lines in the Progress section.** These are at the top of the Openings screen, on both colour tabs. There is one line per site and format:
+   - your rating at the start date and now;
+   - your performance rating since the start, with a 95% interval and your W–D–L;
+   - the number of games behind it.
+
+   **Threshold: 30 games** (setting `min_games_rating`). At 30 games the 95% margin is about ±125 points; at 10 games it would be about ±215, which says nothing. Below 30 games the line says "not enough games yet (30 needed)" and still shows your games and W–D–L. Today every format is below 30: Chess.com bullet has 4 games since the start, and blitz has 2.
+
+### Clock lines: definitions and results (3,233 games)
+
+**Definitions:**
+- **Time per move:** clock before the move − clock after it + increment, as a share of the starting clock. 1% is 0.6 s in 1+0, 3 s in 5+0 and 6 s in 10+0.
+- **Lost on time while winning:** you reached Win% ≥ 90, then lost on time without first falling below 50. These are the same 161 games as in "Thrown wins".
+- **Converted:** you reached Win% ≥ 90 and won.
+
+**Statistical standards:** the same as the other lines (50 games, 500 moves, 95% intervals from resampling whole games).
+
+| Line | Result | Status |
+|---|---|---|
+| a. Pace by stage | In games lost on time while winning, you spent more time per move in bullet moves 11–20 and blitz moves 1–10 and 11–20. By move 20 those games had used about 6% more of the starting clock in bullet (4 s in 1+0) and 9% more in blitz (27 s in 5+0). In blitz moves 21–30 you then spent *less* per move. Rapid: only 6 games lost on time while winning, too few. | shown |
+| b. Pace when winning | Compared within the same clock band, you play *faster* when clearly winning than in balanced positions, in all three time controls. Bullet −0.53 points of the clock per move (interval −0.64 to −0.40); blitz −0.46; rapid −0.33. | shown |
+| c. Long thinks | **Definition:** one move using ≥ 10% of the starting clock. In bullet, 75% of games have one (6 s in 1+0), and 98% of them fall in moves 1–20. Blitz: 39% of games, mostly moves 11–20. Rapid: 12% of games. Games lost on time while winning against games converted: no clear difference (bullet +0.5 per 100 moves, interval −0.5 to +1.4). | shown |
+| d. Increment | Can't be answered yet. Your increment and no-increment formats differ in base time (2+1 against 1+0), and only same-base pairs are compared. The natural pair, 5+5 and 5+3 against 5+0, has only 26 winning games with increment, none lost on time. The by-format table shows 1+0 39% and 2+1 24%, but that gap mixes increment with double the base time. | Checked |
+| e. Rushing | Counting all moves, you blunder *less* in winning positions when low on clock in blitz (6.5 against 10.8 per 100) and rapid. From move 21 only, there are too few moves with plenty of clock in bullet and blitz, and rapid shows no clear difference. Low clock comes late, in simpler positions, so move number may explain it. | Checked |
+
+**What it points to:** the clock goes in the first 20 moves (long thinks in the opening and early middlegame), not in slow play once winning or in blunders under time pressure.
+
+### What I tested
+
+- **Python: 72 tests** (8 new). They cover:
+  - the game kinds;
+  - shares of the starting clock;
+  - the 10% long-think boundary;
+  - same-base increment pairing;
+  - winning-only rushing;
+  - the performance rating against the Elo formula (50% gives the opponents' rating; 75% gives +191);
+  - start and now ratings with each site's rating timing;
+  - the leak-card record: every card's three numbers add up to the games where the move was played.
+- **App: 32 tests** (3 new). They cover:
+  - colour and opening filters, where an opening group is a name plus a colour;
+  - due cards still coming under a filter, with the leak cap holding;
+  - clean solves: retries, hints and solutions never count; a later showing counts; the same showing number on another day is a separate showing.
+- **In the browser, at 393×852 with your phone's 62/34 spacing simulated,** on a device that already held 2.4.1 reviews:
+  - **Upgrade:** it opened with its set and statuses intact.
+  - **First set of the day:** choosing "Caro-Kann Defense (as Black)" re-picked it as 10 new Caro-Kann cards (3 of them leak cards, the cap) plus the 1 due review.
+  - **Extra set:** "White" gave 10 new White cards and no leak cards, because today's 3 were already used.
+  - **f3 leak card:** showed "Your results with f3: 2 wins, 1 draw, 10 losses", the White tag, "1.5 s · first clean solve", then "new best, was 1.5 s". A wrong move followed by the right one showed no time.
+  - **Answer-screen fit:** at 390×844 the answer lines end 2 px above the buttons.
+  - **Insights:** the tables render without sideways scrolling.
+  - **Rating lines:** they render both with "not enough games yet" and, using test data with an earlier start date, with a performance rating.
+
+### What I couldn't test
+
+1. **Your iPhone:**
+   - the native "New cards" picker with about 165 openings;
+   - the banner time;
+   - the new tables on the Insights screen.
+2. **Answer times from your real reviews.** The best times come from your synced log, which only your devices hold.
+3. **The 375-point-wide iPhone mini size.** It is not a current model. There, leak cards with the record line run 12 px below the fold, and you scroll to see the line.
+4. **Performance ratings with real data since the start.** No format has 30 games yet.
+
+### Where I disagree or would flag
+
+1. **Best times from same-day repeats.**
+   - **The problem:** by your definition, a card shown again minutes after you missed it, or saw its solution, counts as clean if you get it right first try in that showing. In testing that produced a 0.4 s "best" right after seeing the answer.
+   - **My suggestion:** count only showings with no miss earlier that study day. That is a one-line change, and I haven't made it.
+2. **Pace by stage compares games picked by how they ended.** Games lost on time used more clock by definition. The early stages are the informative part: they show where the extra clock went. They don't prove that this caused the loss.
+3. **Increment needs more games.** To test it, play about 50 winning games in a format with increment at the same base as one you already play (for example 5+5 against 5+0).
+4. **Rating details:**
+   - **Lichess "now":** Lichess files store the rating *before* each game, so "now" doesn't include your last Lichess game's change.
+   - **Chess.com opponents:** Chess.com stores ratings *after* the game, so opponent ratings in the performance figure are a few points off their pre-game values.

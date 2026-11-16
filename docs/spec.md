@@ -1,6 +1,6 @@
 # Personal Chess Coach — Spec (v1, for review)
 
-Status: approved 2026-11-13 with the changes in section 8; Phase 3 sections added 2026-11-15.
+Status: approved 2026-11-13 with the changes in section 8; Phase 3 sections added 2026-11-15; additions of 2026-11-16 in sections 6.1 and 6.3.
 
 ## 1. What I checked before writing this
 
@@ -184,6 +184,7 @@ Ongoing at your current pace (~850 games/month) is roughly a quarter of that per
   - Right on the first showing: Known. Wrong (or Hint, or Solution): Missed, and the card comes back **3 cards later**. Right on a later showing: Missed → Unsure (back **5 cards later**), Unsure → Known. Wrong again: back to Missed.
   - **Finish later** saves the place; reopening the app the same day offers **Resume**. A finished set shows a "Set complete" screen.
   - **Start another set** (2.2.2): after a set is complete, the next 10 new cards plus anything due that hasn't had its first answer today. No daily limit. Before starting, the screen shows what the new cards add to the next days: (share of first answers missed recently) × 10 tomorrow, the rest in 2 days, using the last 14 days' first-try rate (50% until there are 5 answers). First answers in extra sets count for scheduling like any other.
+  - **Choice of new cards** (2.5.0): when a set starts (the day's first set, until its first answer; or "Start another set"), a menu picks which new cards it takes: All (default), White, Black, or one opening group (per colour). Only new cards are filtered: every due review still comes. The 3-a-day cap on new leak cards still applies. The choice lasts for the study day and is kept on the device only (it is not an event; the set event lists the cards as before).
   - **Sets are derived from events** (2.2.2): starting a set logs a `set` event (round number and cards); statuses and queue order are rebuilt by replaying the day's events in time order (the deciding event of each showing is its first failure, else its correct move). The same events give the same set on any device, so sync can share set progress.
   - Only the first showing of a card each day feeds the scheduler (section 3). Later showings that day are drilling: logged, never moving the card further out.
 - **Screen layout** (2.2.2): between the banner and the bottom, an info area takes all the space; the button area (Next, Too easy, Hint/Solution/My move) is pinned to the bottom just above the home indicator. After an answer, the best line, the game move with its evaluation and its refutation must be visible without scrolling (2.3.1: guaranteed by the fixed board size above; the board no longer shrinks after an answer).
@@ -191,6 +192,9 @@ Ongoing at your current pace (~850 games/month) is roughly a quarter of that per
 - **Banner:** white "White/Black to move. Find the best move."; red when wrong; green when solved.
 - **Wrong move:** the banner says "Not the best move. Try again.", or "That's the move you played in the game." when my move equals a move I played from this position in any of the card's games; that showing counts as a **habit** on the card (shown as a tag, e.g. "habit ×2"). The piece goes back and I can try again. Three buttons appear: **Hint** (marks the square of the piece that moves; counts as missed), **Solution** (reveals the answer; counts as missed), **My move** (shows the move I played in the game).
 - **After solving or revealing:** the engine's solution line with its evaluation, then one block for the move I played in the game and the opponent's refutation of it, which share one evaluation (pawns from my side (a mate is shown as "mate in n" / "mated in n"). Win% is shown as secondary detail. Each line can be stepped through on the board. Then the card's tags and links to the original game (Lichess links open at the move) and a Lichess analysis board.
+- **Answer time** (2.5.0): no timer is shown while solving. After a clean solve (a showing whose first event is the right move: no miss, hint or solution before it), the banner shows the time from the card appearing to the move, and the card's best clean time ("best 3.1 s", "new best, was 4.2 s", or "first clean solve"). Retries and hinted answers show no time and never count toward a best. Computed on the device from the `ms` field of `move` events (all synced devices); nothing new is stored.
+- **Tags** (2.5.0): every card's tag row starts with "White" or "Black", the side I played.
+- **Leak cards** (2.5.0): under "You usually play f3 (13×)", my results in the games where I played that move there ("2 wins, 1 draw, 10 losses").
 - **Buttons after the first showing, if right first try:** **Too easy** and **Next**, each captioned with the real return date for that card ("Next: back in 2 days"). Otherwise one **Next**, captioned with what happens ("Again in a few cards, then back tomorrow", "Once more later in this set", "Known for today · back tomorrow").
 - **Study day:** starts at **4:00 a.m. local time**, so a late-night session counts as the same day.
 - **Updates reach the installed app on their own:** page loads go to the network first (offline: the cached copy), and when a new version takes over while the app is open it reloads at the next card boundary. Settings shows the **version number** (e.g. 2.2.1) and build id.
@@ -229,6 +233,8 @@ Ongoing at your current pace (~850 games/month) is roughly a quarter of that per
 - **Data:** `data/openings.json` and `data/insights.json`, built nightly from stored games and Stockfish output (games are public on both sites). Review data never goes into them.
 - **Openings:** repertoire per colour with time-control filters. For groups with ≥60 games: score minus rating-expected score (Elo formula on the stored ratings) in blocks of 30 games, oldest first, with 95% intervals. Opponents' replies (positions with the opponent to move in the first 8 half-moves, reached ≥20 times). Opening errors and repertoire choices (4.2). A move tree of positions reached ≥3 times in my first 15 moves: my results after each move; Stockfish's top 3 where reached ≥10 times. Where I've played them at least 5 times each: my usual move side by side with the best-scoring other move and with the engine's move.
 - **Insights:** each line = the statistic, the sample behind it, and a canned tip in a separate box labelled as general advice. Shown only with ≥50 games, ≥500 moves or ≥30 events behind it. Comparisons are shown only when the 95% interval of the difference excludes zero; move-level intervals come from resampling whole games. Lines that fail are listed under "Checked, no clear pattern". Blunder rates count positions with Win% before between 10 and 90. Session = games where each starts ≤15 minutes after the previous ended (start = end − clock time used). Time zone America/New_York.
+- **Clock lines** (2026-11-16, `coach/clock.py`): from the clock stored after every move; time per move = clock before − clock after + increment, as a share of the starting clock. (a) pace by stage (moves 1–10 … 41+), games lost on time while winning (reached Win% ≥ 90, lost on time without first falling below 50) against games converted, per time control; (b) pace in clearly winning positions (Win% ≥ 90) against positions still in the balance (10–90), from move 11, compared inside clock bands (>50%, 20–50%, 10–20%, <10% left); (c) long thinks = one move using ≥ 10% of the starting clock, by stage; (d) winning games lost on time with against without increment, only at the same base time; (e) blunder rate in clearly winning positions with < 10% against ≥ 50% of the clock left, also checked from move 21. Same thresholds, whole-game resampling and "Checked" rules as the other lines.
+- **Progress, rating lines** (2026-11-16, `coach/ratings.py`): per site and format, rated games: rating at the start date, rating now, performance rating since the start (Elo formula against the actual opponents) with a 95% interval from resampling whole games, shown from **30 games** (setting `min_games_rating`, about ±125 points). Chess.com stores ratings after each game, Lichess before it (checked on the stored games).
 - **Training lines** are computed on the device from its own review log: first-try rate by week (shown from 100 first answers over 14 study days), most repeated habits (shown when 5 cards have ≥2 habit showings).
 
 ## 7. Milestones
@@ -300,6 +306,10 @@ The Phase 1 backfill started on this Mac (765 games) and was finished by the Git
 5. Insights: 5 lines; missed gifts shown as kept / partly given back / given back, without a comparison to other moves; speed dropped; tilt, game number and time of day checked and hidden while unclear; training on the device.
 6. Menu tile, dialogs below the top strip, "Back in 2 days" captions, no half line above the buttons.
 7. Score against rating over time for openings with ≥60 games, blocks of 30.
+
+### Additions (2026-11-16, version 2.5.0)
+
+Leak-card record, colour tag, choice of new cards, clock lines, clean-solve times, rating lines (sections 6.1 and 6.3). No new engine work, no database or event-format change.
 
 ## 9. Risks and unknowns
 

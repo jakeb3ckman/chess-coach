@@ -17,6 +17,7 @@ export interface GameMove {
   win_before: number;
   win_after: number;
   move_number: number;
+  record?: { w: number; d: number; l: number }; // leak cards: my results in the games where I played `move` here
 }
 
 export interface AppCard {

@@ -37,10 +37,15 @@ interface Leak {
 interface OpeningsFile {
   format: number; games: number; groups: Record<Color, Group[]>; replies: Reply[]; leaks: Leak[];
   nodes: Record<string, TreeNode>; start: Record<Color, string>;
-  progress?: { start: string; min_games_since: number; right_within: number };
+  progress?: { start: string; min_games_since: number; right_within: number; ratings?: { rows: RatingRow[]; min_games: number } };
   rules: { leak_min_drop: number; leak_error_drop: number; right_within: number; group_min_games: number; trend_block: number };
 }
-interface InsightLine { id: string; title: string; stat: string; sample: string; detail?: string; status: 'shown' | 'checked'; tip: string | null }
+interface InsightTable { title: string; head: string[]; rows: string[][] }
+interface InsightLine { id: string; title: string; stat: string; sample: string; detail?: string; status: 'shown' | 'checked'; tip: string | null; tables?: InsightTable[] }
+interface RatingRow {
+  site: 'chesscom' | 'lichess'; tc: 'bullet' | 'blitz' | 'rapid'; start: number | null; now: number; now_date: string;
+  games: number; w: number; d: number; l: number; enough: boolean; opp_avg?: number; perf?: number; lo?: number; hi?: number;
+}
 interface InsightsFile { format: number; games: number; lines: InsightLine[]; thresholds: { games: number; moves: number; events: number; comparisons: string } }
 
 export interface PageCtx { db: IDBDatabase; byId: Map<string, AppCard>; onClose: () => void }
@@ -180,12 +185,32 @@ function progressHtml(c: Color): string {
   const idle = groups.filter((g) => sinceGames(g) === 0);
   return `
     <h3>Progress since ${pr.start}</h3>
+    ${ratingsHtml()}
     <p class="muted small">Your training start date (a setting). Games ending on or after it count as "since".
       A good move is within ${pr.right_within} Win% of Stockfish's best (position pass); "old move" is your leak move there.
       Comparisons resting on fewer than ${min} games since the start say "not enough games yet"; the counts are always shown.
       All time controls. Card statuses are your latest result on each card, counted on this device from your reviews and never published.</p>
     <div class="list">${active.map(groupCard).join('') || '<p class="muted">No games in your groups since the start date yet.</p>'}</div>
     ${idle.length ? `<details class="checked"><summary>${plural(idle.length, 'opening')} with no games since ${pr.start}</summary><div class="list">${idle.map(groupCard).join('')}</div></details>` : ''}`;
+}
+
+const SITE = { chesscom: 'Chess.com', lichess: 'Lichess' } as const;
+
+/** One line per site and format: rating at the start and now, performance since. */
+function ratingsHtml(): string {
+  const rt = openings!.progress?.ratings;
+  if (!rt?.rows.length) return '';
+  const row = (r: RatingRow) => {
+    const perf = r.games === 0 ? 'no games since the start'
+      : r.enough && r.perf !== undefined
+        ? `performance <b>${r.perf}</b> (95%: ${r.lo} to ${r.hi}) from ${plural(r.games, 'game')}, ${r.w}–${r.d}–${r.l}, average opponent ${r.opp_avg}`
+        : `${plural(r.games, 'game')} since, ${r.w}–${r.d}–${r.l} · not enough games yet (${rt.min_games} needed)`;
+    return `<div class="item"><div class="top"><span class="name">${SITE[r.site]} ${r.tc}</span>
+      <span class="num">${r.start ?? '–'} → ${r.now}</span></div><div class="sub">${perf}</div></div>`;
+  };
+  return `<div class="ratings"><p class="muted small">Rated games only. Left: your rating at the start date; right: your rating now, from your latest game (Lichess files store the rating before each game, so the last game's change isn't included).
+    Performance rating: the rating at which the Elo formula expects your actual score against your actual opponents since the start; 95% interval from resampling whole games. Each site's own rating scale.</p>
+    <div class="list">${rt.rows.map(row).join('')}</div></div>`;
 }
 
 function renderOpenings() {
@@ -317,6 +342,11 @@ function showNode(key: string) {
 
 // ---------------------------------------------------------------- Insights
 
+function tableHtml(t: InsightTable): string {
+  return `<p class="tt">${esc(t.title)}</p><table><thead><tr>${t.head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead>
+    <tbody>${t.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+
 async function showInsights() {
   frame('Insights', '<p class="muted">Loading…</p>');
   let f: InsightsFile;
@@ -330,6 +360,7 @@ async function showInsights() {
     <div class="fact">
       <h4>${esc(l.title)}</h4>
       <p class="stat">${esc(l.stat)}</p>
+      ${(l.tables ?? []).map(tableHtml).join('')}
       <p class="samp">Based on ${esc(l.sample)}.</p>
       ${l.detail ? `<p class="det">${esc(l.detail)}</p>` : ''}
       ${l.tip && l.status === 'shown' ? `<div class="tip"><span class="tl">Tip · general advice, not computed from your games</span>${esc(l.tip)}</div>` : ''}
