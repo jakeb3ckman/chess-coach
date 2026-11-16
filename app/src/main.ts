@@ -834,7 +834,9 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 
 /** After a clean solve: this time and the card's best clean time (all devices' synced reviews). */
 async function showTime(sh: Showing, clean: { id: string; ms: number }) {
-  const prev = cleanSolves(await eventsForCard(app.db, sh.card.id)).filter((x) => x.id !== clean.id).map((x) => x.ms);
+  const solves = cleanSolves(await eventsForCard(app.db, sh.card.id));
+  if (!solves.some((x) => x.id === clean.id)) return; // missed earlier this study day: no time
+  const prev = solves.filter((x) => x.id !== clean.id).map((x) => x.ms);
   const best = prev.length ? Math.min(...prev) : null;
   if (app.sh !== sh) return;
   const t = best === null ? 'first clean solve' : clean.ms < best ? `new best, was ${secs(best)}` : `best ${secs(best)}`;

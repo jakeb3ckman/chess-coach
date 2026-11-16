@@ -52,7 +52,7 @@ const ev = (card: string, kind: ReviewEventV2['kind'], extra: Partial<ReviewEven
   device: 'iphone', kind, showing: 1, sched: false, ...extra,
 });
 
-test('clean solves: right on the first try only; retries, hints and solutions never count', () => {
+test('clean solves: right on the first try, with no miss on that card earlier that study day', () => {
   const evs = [
     ev('a', 'move', { correct: true, attempt: 1, ms: 5200 }), // clean
     ev('a', 'grade', { sched: true, rating: 3 }),
@@ -61,13 +61,17 @@ test('clean solves: right on the first try only; retries, hints and solutions ne
     ev('c', 'hint', { ms: 2000 }), // hint, then right: no time
     ev('c', 'move', { correct: true, attempt: 1, ms: 4000 }),
     ev('d', 'solution', { ms: 1000 }),
-    ev('b', 'move', { correct: true, attempt: 1, ms: 2500, showing: 2 }), // a later showing, clean within it
+    ev('b', 'move', { correct: true, attempt: 1, ms: 2500, showing: 2 }), // re-shown after the miss the same day: no time
+    ev('e', 'hint', { device: 'mac', ms: 1500 }), // a hint on the other device the same day...
+    ev('e', 'move', { correct: true, attempt: 1, ms: 1800 }), // ...so this first-try solve doesn't count either
     ev('a', 'move', { correct: true, attempt: 1, ms: 3100, day: '2026-11-17' }), // another day, same showing number
+    ev('b', 'move', { correct: true, attempt: 1, ms: 4400, day: '2026-11-17' }), // missed yesterday, clean today: counts
   ];
-  assert.deepEqual(cleanSolves(evs).map((x) => [x.card, x.ms]).sort(), [['a', 3100], ['a', 5200], ['b', 2500]]);
-  assert.deepEqual([...bestTimes(evs)].sort(), [['a', 3100], ['b', 2500]]);
+  assert.deepEqual(cleanSolves(evs).map((x) => [x.card, x.ms]).sort(), [['a', 3100], ['a', 5200], ['b', 4400]]);
+  assert.deepEqual([...bestTimes(evs)].sort(), [['a', 3100], ['b', 4400]]);
   const v1: ReviewEventV1 = { id: 'v1', v: 1, card_id: 'z', ts: '2026-11-13T10:00:00Z', device: 'mac', move_played: 'a1a2', correct: true, rating: 3, ms_to_answer: 7000 };
-  assert.deepEqual(cleanSolves([v1, { ...v1, id: 'v2', correct: false }]).map((x) => x.ms), [7000]);
+  assert.deepEqual(cleanSolves([v1, { ...v1, id: 'v2', correct: false }]).map((x) => x.ms), [7000]); // the miss came after
+  assert.deepEqual(cleanSolves([{ ...v1, id: 'v0', correct: false, ts: '2026-11-13T09:00:00Z' }, v1]).map((x) => x.ms), []);
   assert.equal(secs(4230), '4.2 s');
   assert.equal(secs(65000), '1:05');
 });

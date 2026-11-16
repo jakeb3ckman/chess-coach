@@ -273,7 +273,7 @@ Each would move up with its tip if a pattern became clear.
 5. **Answer time on clean solves.**
    - No timer is shown while you solve.
    - After a clean solve, the banner shows your time and your best for that card, for example "4.2 s · best 3.1 s", "3.1 s · new best, was 4.2 s", or "first clean solve".
-   - A clean solve is a showing whose first event is the right move.
+   - A clean solve is a showing whose first event is the right move, with no miss, hint or solution on that card earlier the same study day on any device (2.5.1, see below).
    - Times come from the `ms` field the app already logs, on all synced devices. Retries and hinted answers show no time and never count toward a best.
 6. **Rating lines in the Progress section.** These are at the top of the Openings screen, on both colour tabs. There is one line per site and format:
    - your rating at the start date and now;
@@ -337,9 +337,7 @@ Each would move up with its tip if a pattern became clear.
 
 ### Where I disagree or would flag
 
-1. **Best times from same-day repeats.**
-   - **The problem:** by your definition, a card shown again minutes after you missed it, or saw its solution, counts as clean if you get it right first try in that showing. In testing that produced a 0.4 s "best" right after seeing the answer.
-   - **My suggestion:** count only showings with no miss earlier that study day. That is a one-line change, and I haven't made it.
+1. **Best times from same-day repeats (changed in 2.5.1 at your request).** A card shown again minutes after you missed it, or saw its solution, counted as clean if you got it right first try in that showing; in testing that produced a 0.4 s "best" right after seeing the answer. Now a solve counts only when that card had no miss, hint or solution earlier the same study day, on any device. Checked in the browser: a card re-shown after a miss shows no time; a first-try solve still does. One more app test covers it (a hint on the Mac blocks a same-day time on the iPhone; a miss yesterday doesn't block today).
 2. **Pace by stage compares games picked by how they ended.** Games lost on time used more clock by definition. The early stages are the informative part: they show where the extra clock went. They don't prove that this caused the loss.
 3. **Increment needs more games.** To test it, play about 50 winning games in a format with increment at the same base as one you already play (for example 5+5 against 5+0).
 4. **Rating details:**
